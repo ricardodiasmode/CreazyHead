@@ -1,0 +1,33 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{C931C078-4B13-9B44-BD4C-2289963C0843}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "CRAZY_HEAD_DANCE",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "DatasmithFBXImporter",
+			"Enabled": true
+		},
+		{
+			"Name": "DatasmithC4DImporter",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Win64",
+				"Mac"
+			]
+		}
+	],
+	"TargetPlatforms": [
+		"WindowsNoEditor"
+	]
+}
