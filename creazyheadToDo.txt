@@ -1,0 +1,9 @@
+- Aprimoramento dos algoritmos do game e do menu para comportar combinações de bonecos diferentes na cena;
+4 horas = 480 reais;
+- Aprimoramento dos algoritmos do game e do menu para comportar mesclas de músicas;
+3 horas = 360 reais;
+- Retarget de 20 bonecos;
+10 horas = 1200 reais*;
+*É possível que o retarget não funcione para alguns bonecos. Aqueles que não comportarem o processo não será cobrado o tempo para a tentativa;
+- Sistema de colocar a cabeça de um ser humano no boneco;
+10 horas = 1200 reais;

@@ -1,4 +1,4 @@
 */**/**/**/*  This is a simplified db readed by the application. This MUST be on same location that .exe to application work.
 You can manually add new accounts here by writing a line: {accountName} {password} {expirationDate} {expirationTime} 
 WARNING: ACCOUNTS OR PASSWORDS MAY NOT HAVE SPACES **/**/**/**/*
-admin 123 24/02/2022 17:56
+admin 123 24/05/2022 17:56
