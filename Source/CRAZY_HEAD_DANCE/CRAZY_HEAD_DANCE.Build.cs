@@ -5,6 +5,8 @@ using System.IO;
 
 public class CRAZY_HEAD_DANCE : ModuleRules
 {
+    string OPENCV_VERSION = "455";
+
 	private string ThirdPartyPath
 	{
 		get { return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../ThirdParty/")); }
@@ -61,11 +63,11 @@ public class CRAZY_HEAD_DANCE : ModuleRules
             PublicSystemLibraryPaths.Add(LibPath);
 
             //Add Static Libraries
-            PublicSystemLibraryPaths.Add("opencv_world320.lib");
+            PublicAdditionalLibraries.Add(Path.Combine(LibPath, "opencv_world"+ OPENCV_VERSION + ".lib"));
 
             //Add Dynamic Libraries
-            PublicDelayLoadDLLs.Add("opencv_world320.dll");
-            PublicDelayLoadDLLs.Add("opencv_ffmpeg320_64.dll");
+            PublicDelayLoadDLLs.Add("opencv_world"+ OPENCV_VERSION + ".dll");
+            PublicDelayLoadDLLs.Add("opencv_ffmpeg" + OPENCV_VERSION + "_64.dll");
         }
 
         PublicDefinitions.Add(string.Format("WITH_OPENCV_BINDING={0}", isLibrarySupported ? 1 : 0));
