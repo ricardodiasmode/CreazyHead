@@ -15,14 +15,11 @@ class CRAZY_HEAD_DANCE_API AFaceDetector : public AActor
 	GENERATED_BODY()
 private:
 	// VideoCapture class for playing video for which faces to be detected
-	cv::VideoCapture capture;
+	cv::VideoCapture Vcapture;
 	cv::Mat frame;
-	cv::Mat image;
 
 	// PreDefined trained XML classifiers with facial features
 	cv::CascadeClassifier cascade;
-	cv::CascadeClassifier nestedCascade;
-	double scale = 1;
 
 private:
 	void DetectAndDraw(cv::Mat& img);
