@@ -22,7 +22,7 @@ private:
 	cv::CascadeClassifier cascade;
 
 private:
-	void DetectAndDraw(cv::Mat& img);
+	void DetectAndDraw();
 
 public:	
 	// Sets default values for this actor's properties
