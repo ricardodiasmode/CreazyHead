@@ -11,6 +11,8 @@
 #include "opencv2/opencv.hpp"
 #include "FaceDetector.generated.h"
 
+class UTexture2D;
+
 UCLASS()
 class CRAZY_HEAD_DANCE_API AFaceDetector : public AActor
 {
@@ -19,28 +21,34 @@ private:
 	// VideoCapture class for playing video for which faces to be detected
 	cv::VideoCapture Vcapture;
 	cv::Mat frame;
+    std::vector<cv::Rect> CurrentRectangles;
 
 	// PreDefined trained XML classifiers with facial features
 	cv::CascadeClassifier cascade;
 
+public:
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        UTexture2D* FrameAsTexture;
+
 private:
 	void DetectAndDraw();
-
-public:	
-	// Sets default values for this actor's properties
-	AFaceDetector();
+    void ConvertMatToOpenCV();
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
-public:	
+public:
+    // Sets default values for this actor's properties
+    AFaceDetector();
+
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
 };
 
-class AuxFaceDetector {
+class AuxFaceDetector 
+{
 public:
     explicit AuxFaceDetector();
 
