@@ -21,7 +21,7 @@ private:
 	// VideoCapture class for playing video for which faces to be detected
 	cv::VideoCapture Vcapture;
 	cv::Mat frame;
-    std::vector<cv::Rect> CurrentRectangles;
+    //std::vector<cv::Rect> CurrentRectangles;
 
 	// PreDefined trained XML classifiers with facial features
 	cv::CascadeClassifier cascade;

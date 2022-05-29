@@ -47,13 +47,12 @@ void AFaceDetector::DetectAndDraw()
         
     AuxFaceDetector face_detector;
 
-    CurrentRectangles = face_detector.detect_face_rectangles(frame);
+    std::vector<cv::Rect> CurrentRectangles = face_detector.detect_face_rectangles(frame);
     cv::Scalar color(0, 105, 205);
     int frame_thickness = 4;
     for (const auto& r : CurrentRectangles)
         cv::rectangle(frame, r, color, frame_thickness);
-    if(CurrentRectangles.size() > 0)
-        ConvertMatToOpenCV();
+    ConvertMatToOpenCV();
 }
 
 AuxFaceDetector::AuxFaceDetector() : confidence_threshold_(0.5), input_image_height_(300), input_image_width_(300),
@@ -102,9 +101,12 @@ std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& fra
 
 void AFaceDetector::ConvertMatToOpenCV()
 {
-    const int32 SrcWidth = CurrentRectangles[0].width;
-    const int32 SrcHeight = CurrentRectangles[0].height;
-    const bool UseAlpha = true;
+    cv::Mat resized;
+    cv::resize(frame, resized, cv::Size(frame.cols/3, frame.rows/3));
+    cv::imshow("img", resized);
+    const int32 SrcWidth = resized.cols;//CurrentRectangles[0].width;
+    const int32 SrcHeight = resized.rows;// CurrentRectangles[0].height;
+    const bool UseAlpha = false;
     // Create the texture
     FrameAsTexture = UTexture2D::CreateTransient(
         SrcWidth,
@@ -113,19 +115,19 @@ void AFaceDetector::ConvertMatToOpenCV()
     );
 
     // Getting SrcData
-    uint8_t* pixelPtr = (uint8_t*)frame.data;
-    int cn = frame.channels();
+    uint8_t* pixelPtr = (uint8_t*)resized.data;
+    int cn = resized.channels();
     cv::Scalar_<uint8_t> bgrPixel;
     TArray<FColor*> ImageColor;
 
-    for (int i = 0; i < frame.rows; i++)
+    for (int i = 0; i < resized.rows; i++)
     {
-        for (int j = 0; j < frame.cols; j++)
+        for (int j = 0; j < resized.cols; j++)
         {
             // Getting pixel rgb values
-            bgrPixel.val[0] = pixelPtr[i * frame.cols * cn + j * cn + 0]; // B
-            bgrPixel.val[1] = pixelPtr[i * frame.cols * cn + j * cn + 1]; // G
-            bgrPixel.val[2] = pixelPtr[i * frame.cols * cn + j * cn + 2]; // R
+            bgrPixel.val[0] = pixelPtr[i * resized.cols * cn + j * cn + 0]; // B
+            bgrPixel.val[1] = pixelPtr[i * resized.cols * cn + j * cn + 1]; // G
+            bgrPixel.val[2] = pixelPtr[i * resized.cols * cn + j * cn + 2]; // R
             uint8 ImageR = bgrPixel.val[2];
             uint8 ImageG = bgrPixel.val[1];
             uint8 ImageB = bgrPixel.val[0];
@@ -143,8 +145,9 @@ void AFaceDetector::ConvertMatToOpenCV()
     const FColor* SrcPtr = NULL;
     for (int32 y = 0; y < SrcHeight; y++)
     {
-        DestPtr = &MipData[(SrcHeight - 1 - y) * SrcWidth * sizeof(FColor)];
-        SrcPtr = const_cast<FColor*>(ImageColor[(SrcHeight - 1 - y) * SrcWidth]);
+        int CurrentIndex = (SrcHeight - 1 - y) * SrcWidth;
+        DestPtr = &MipData[CurrentIndex * sizeof(FColor)];
+        SrcPtr = const_cast<FColor*>(ImageColor[CurrentIndex]);
         for (int32 x = 0; x < SrcWidth; x++)
         {
             *DestPtr++ = SrcPtr->B;
