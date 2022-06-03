@@ -104,8 +104,8 @@ void AFaceDetector::ConvertMatToOpenCV()
     cv::Mat resized;
     cv::resize(frame, resized, cv::Size(frame.cols/3, frame.rows/3));
     cv::imshow("img", resized);
-    const int32 SrcWidth = resized.cols;//CurrentRectangles[0].width;
-    const int32 SrcHeight = resized.rows;// CurrentRectangles[0].height;
+    const int32 SrcWidth = resized.cols;
+    const int32 SrcHeight = resized.rows;
     const bool UseAlpha = false;
     // Create the texture
     FrameAsTexture = UTexture2D::CreateTransient(
@@ -117,20 +117,16 @@ void AFaceDetector::ConvertMatToOpenCV()
     // Getting SrcData
     uint8_t* pixelPtr = (uint8_t*)resized.data;
     int cn = resized.channels();
-    cv::Scalar_<uint8_t> bgrPixel;
     TArray<FColor*> ImageColor;
 
-    for (int i = 0; i < resized.rows; i++)
+    for (int i = 0; i < SrcHeight; i++)
     {
-        for (int j = 0; j < resized.cols; j++)
+        for (int j = 0; j < SrcWidth; j++)
         {
             // Getting pixel rgb values
-            bgrPixel.val[0] = pixelPtr[i * resized.cols * cn + j * cn + 0]; // B
-            bgrPixel.val[1] = pixelPtr[i * resized.cols * cn + j * cn + 1]; // G
-            bgrPixel.val[2] = pixelPtr[i * resized.cols * cn + j * cn + 2]; // R
-            uint8 ImageR = bgrPixel.val[2];
-            uint8 ImageG = bgrPixel.val[1];
-            uint8 ImageB = bgrPixel.val[0];
+            uint8 ImageR = pixelPtr[i * SrcWidth * cn + j * cn + 2]; // R
+            uint8 ImageG = pixelPtr[i * SrcWidth * cn + j * cn + 1]; // G
+            uint8 ImageB = pixelPtr[i * SrcWidth * cn + j * cn + 0]; // B
 
             // Storing RGB values
             ImageColor.Add(new FColor(ImageR, ImageG, ImageB, 1));
@@ -143,9 +139,9 @@ void AFaceDetector::ConvertMatToOpenCV()
     // Create base mip.
     uint8* DestPtr = NULL;
     const FColor* SrcPtr = NULL;
-    for (int32 y = 0; y < SrcHeight; y++)
+    for (int32 y = 1; y <= SrcHeight; y++)
     {
-        int CurrentIndex = (SrcHeight - 1 - y) * SrcWidth;
+        int CurrentIndex = (SrcHeight - y) * (SrcWidth);
         DestPtr = &MipData[CurrentIndex * sizeof(FColor)];
         SrcPtr = const_cast<FColor*>(ImageColor[CurrentIndex]);
         for (int32 x = 0; x < SrcWidth; x++)
@@ -153,17 +149,17 @@ void AFaceDetector::ConvertMatToOpenCV()
             *DestPtr++ = SrcPtr->B;
             *DestPtr++ = SrcPtr->G;
             *DestPtr++ = SrcPtr->R;
-            if (UseAlpha)
-            {
-                *DestPtr++ = SrcPtr->A;
-            }
-            else
-            {
-                *DestPtr++ = 0xFF;
-            }
+            *DestPtr++ = (UseAlpha ? SrcPtr->A : 0xFF);
+
             SrcPtr++;
         }
     }
+
+    /*
+    * Facts:
+    * 1. Texture2D is actually being generated just a half.
+    * 2. 
+    */
 
     // Unlock the texture
     FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
