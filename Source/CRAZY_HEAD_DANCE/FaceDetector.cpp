@@ -106,6 +106,7 @@ void AFaceDetector::ConvertMatToOpenCV()
     cv::imshow("img", resized);
     const int32 SrcWidth = resized.cols;
     const int32 SrcHeight = resized.rows;
+    UE_LOG(LogTemp, Warning, TEXT("SRCsizeX: %d"), SrcWidth);
     const bool UseAlpha = false;
     // Create the texture
     FrameAsTexture = UTexture2D::CreateTransient(
@@ -116,22 +117,33 @@ void AFaceDetector::ConvertMatToOpenCV()
 
     // Getting SrcData
     uint8_t* pixelPtr = (uint8_t*)resized.data;
-    int cn = resized.channels();
+    const int NumberOfChannels = resized.channels();
     TArray<FColor*> ImageColor;
 
-    for (int i = 0; i < SrcHeight; i++)
+    typedef cv::Point3_<uint8_t> Pixel;
+    int sizes[] = { 255, 255, 255 };
+    cv::Mat_<Pixel> image = cv::Mat::zeros(3, sizes, CV_8UC3);
+    image.forEach<Pixel>([&](Pixel& pixel, const int position[]) -> void {
+        pixel.x = position[0];
+        pixel.y = position[1];
+        pixel.z = position[2];
+        // Storing RGB values
+        ImageColor.Add(new FColor(pixel.x, pixel.y, pixel.z, 1));
+        });
+
+    /*for (int i = 0; i < SrcHeight; i++)
     {
         for (int j = 0; j < SrcWidth; j++)
         {
             // Getting pixel rgb values
-            uint8 ImageR = pixelPtr[i * SrcWidth * cn + j * cn + 2]; // R
-            uint8 ImageG = pixelPtr[i * SrcWidth * cn + j * cn + 1]; // G
-            uint8 ImageB = pixelPtr[i * SrcWidth * cn + j * cn + 0]; // B
+            uint8 ImageR = pixelPtr[i * SrcWidth * NumberOfChannels + j * NumberOfChannels + 2]; // R
+            uint8 ImageG = pixelPtr[i * SrcWidth * NumberOfChannels + j * NumberOfChannels + 1]; // G
+            uint8 ImageB = pixelPtr[i * SrcWidth * NumberOfChannels + j * NumberOfChannels + 0]; // B
 
             // Storing RGB values
             ImageColor.Add(new FColor(ImageR, ImageG, ImageB, 1));
         }
-    }
+    }*/
 
     // Lock the texture so it can be modified
     uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
@@ -164,4 +176,5 @@ void AFaceDetector::ConvertMatToOpenCV()
     // Unlock the texture
     FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
     FrameAsTexture->UpdateResource();
+    UE_LOG(LogTemp, Warning, TEXT("sizeX: %d"), FrameAsTexture->GetSizeX());
 }
