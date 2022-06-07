@@ -1,180 +1,169 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "FaceDetector.h"
-#include "Engine/Texture.h"
-#include "ImageUtils.h"
+#include "opencv2/imgproc.hpp"
+#include "opencv2/imgcodecs.hpp"
+#include "opencv2/videoio.hpp"
 
 // Sets default values
-AFaceDetector::AFaceDetector()
+AFaceDetector::AFaceDetector(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
-
+    // Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+    PrimaryActorTick.bCanEverTick = true;
+    // ensure the root component exists
+    if (!RootComponent)
+        RootComponent = CreateDefaultSubobject<USceneComponent>("Root");
+    FAttachmentTransformRules rules = FAttachmentTransformRules(EAttachmentRule::KeepRelative, false);
+    // Initialize OpenCV and webcam properties
+    CameraID = 0;
+    VideoTrackID = 0;
+    shouldReadFrame = false;
+    isStreamOpen = false;
+    VideoSize = FVector2D(1920, 1080);
 }
 
+AFaceDetector::~AFaceDetector() {
+    cv::destroyWindow("OpenCV_Display");
+}
 // Called when the game starts or when spawned
 void AFaceDetector::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
+    // Prepare the color data array
+    ColorData.AddDefaulted(VideoSize.X * VideoSize.Y);
+    // create dynamic texture
+    //OpenCV_Texture2D_Pre = UTexture2D::CreateTransient(VideoSize.X, VideoSize.Y, PF_B8G8R8A8);
+    OpenCV_Texture2D_Post = UTexture2D::CreateTransient(VideoSize.X, VideoSize.Y, PF_B8G8R8A8);
+#if WITH_EDITORONLY_DATA
+    //OpenCV_Texture2D_Pre->MipGenSettings = TMGS_NoMipmaps;
+    OpenCV_Texture2D_Post->MipGenSettings = TMGS_NoMipmaps;
+#endif
+    //OpenCV_Texture2D_Pre->SRGB = RenderTarget_Raw->SRGB;
+    OpenCV_Texture2D_Post->SRGB = RenderTarget_Raw->SRGB;
 
-    // Start Video..1) 0 for WebCam 2) "Path to Video" for a Local Video
-    Vcapture.open(2);
+    LoadOpenCV();
 
-    if (Vcapture.isOpened())
+    isStreamOpen = true;
+}
+
+void AFaceDetector::LoadOpenCV() {
+    // setup openCV
+    cvSize = cv::Size(VideoSize.X, VideoSize.Y);
+    cvMat = cv::Mat(cvSize, CV_8UC4, ColorData.GetData());
+    FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+
+    Path_Cascade_Face = ProjectPath + Path_Cascade_Face;
+    Path_Cascade_Eyes = ProjectPath + Path_Cascade_Eyes;
+
+    cvCascadeClassifier_Face = cv::CascadeClassifier(TCHAR_TO_UTF8(*Path_Cascade_Face));
+    cvCascadeClassifier_Eyes = cv::CascadeClassifier(TCHAR_TO_UTF8(*Path_Cascade_Eyes));
+
+    // load cascades
+    if (!cvCascadeClassifier_Face.load(TCHAR_TO_UTF8(*Path_Cascade_Face)))
     {
-        // Change path before execution 
-        if (cascade.load("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/haarcascades/haarcascade_frontalcatface.xml"))
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("DB Faces loaded!"));
-            UE_LOG(LogTemp, Warning, TEXT("DB Faces loaded!"));
-            FTimerHandle UnusedTimer;
-            GetWorldTimerManager().SetTimer(UnusedTimer, this, &AFaceDetector::DetectAndDraw, 0.05f, true, 1.f);
-        }
-    }
+        UE_LOG(LogTemp, Error, TEXT("Error loading face cascade\n"));
+        UE_LOG(LogTemp, Warning, TEXT("%s"), *Path_Cascade_Face);
+        shouldReadFrame = false;
+    };
+    if (!cvCascadeClassifier_Eyes.load(TCHAR_TO_UTF8(*Path_Cascade_Eyes)))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Error loading eyes cascade\n"));
+        UE_LOG(LogTemp, Warning, TEXT("%s"), *Path_Cascade_Eyes);
+        shouldReadFrame = false;
+    };
+    shouldReadFrame = true;
 }
 
 // Called every frame
 void AFaceDetector::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
+    Super::Tick(DeltaTime);
+    if (shouldReadFrame && isStreamOpen)
+        ReadFrame();
 }
+bool AFaceDetector::ReadFrame() {
+    if (!OpenCV_Texture2D_Pre || !RenderTarget_Raw) return false;
+    // Read the pixels from the RenderTarget and store them in a FColor array
+    //TArray<FColor> SurfData;
 
-void AFaceDetector::DetectAndDraw()
-{
-    // Capture frames from video and detect faces
-    Vcapture >> frame;
-        
-    AuxFaceDetector face_detector;
+    // Get the color data
+    cvMat = cv::Mat(cvSize, CV_8UC4, ColorData.GetData());
 
-    std::vector<cv::Rect> CurrentRectangles = face_detector.detect_face_rectangles(frame);
-    cv::Scalar color(0, 105, 205);
-    int frame_thickness = 4;
-    for (const auto& r : CurrentRectangles)
-        cv::rectangle(frame, r, color, frame_thickness);
-    ConvertMatToOpenCV();
-}
+    // look for a face
+   // if (!cvMat.empty() && FindFace()) {
+        // show the openCV window
+       // cv::imshow("OpenCV_Display", cvMat);
+    //}
 
-AuxFaceDetector::AuxFaceDetector() : confidence_threshold_(0.5), input_image_height_(300), input_image_width_(300),
-scale_factor_(1.0), mean_values_({ 104., 177.0, 123.0 }) 
-{
-
-    network_ = cv::dnn::readNetFromCaffe("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/deploy.prototxt", "C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/res10_300x300_ssd_iter_140000_fp16.caffemodel");
-
-    if (network_.empty()) 
-    {
-        std::ostringstream ss;
-        ss << "Failed to load network with the following settings:\n"
-            << "Configuration: " + std::string("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/deploy.prototxt") + "\n"
-            << "Binary: " + std::string("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/res10_300x300_ssd_iter_140000_fp16.caffemodel") + "\n";
-        throw std::invalid_argument(ss.str());
-    }
-}
-
-std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& frame) 
-{
-    cv::Mat input_blob = cv::dnn::blobFromImage(frame, scale_factor_, cv::Size(input_image_width_, input_image_height_),
-        mean_values_, false, false);
-    network_.setInput(input_blob, "data");
-    cv::Mat detection = network_.forward("detection_out");
-    cv::Mat detection_matrix(detection.size[2], detection.size[3], CV_32F, detection.ptr<float>());
-
-    std::vector<cv::Rect> faces;
-
-    for (int i = 0; i < detection_matrix.rows; i++) 
-    {
-        float confidence = detection_matrix.at<float>(i, 2);
-
-        if (confidence < confidence_threshold_) {
-            continue;
-        }
-        int x_left_bottom = static_cast<int>(detection_matrix.at<float>(i, 3) * frame.cols);
-        int y_left_bottom = static_cast<int>(detection_matrix.at<float>(i, 4) * frame.rows);
-        int x_right_top = static_cast<int>(detection_matrix.at<float>(i, 5) * frame.cols);
-        int y_right_top = static_cast<int>(detection_matrix.at<float>(i, 6) * frame.rows);
-
-        faces.emplace_back(x_left_bottom, y_left_bottom, (x_right_top - x_left_bottom), (y_right_top - y_left_bottom));
-    }
-
-    return faces;
-}
-
-void AFaceDetector::ConvertMatToOpenCV()
-{
-    cv::Mat resized;
-    cv::resize(frame, resized, cv::Size(frame.cols/3, frame.rows/3));
-    cv::imshow("img", resized);
-    const int32 SrcWidth = resized.cols;
-    const int32 SrcHeight = resized.rows;
-    UE_LOG(LogTemp, Warning, TEXT("SRCsizeX: %d"), SrcWidth);
-    const bool UseAlpha = false;
-    // Create the texture
-    FrameAsTexture = UTexture2D::CreateTransient(
-        SrcWidth,
-        SrcHeight,
-        PF_B8G8R8A8
-    );
-
-    // Getting SrcData
-    uint8_t* pixelPtr = (uint8_t*)resized.data;
-    const int NumberOfChannels = resized.channels();
-    TArray<FColor*> ImageColor;
-
-    typedef cv::Point3_<uint8_t> Pixel;
-    int sizes[] = { 255, 255, 255 };
-    cv::Mat_<Pixel> image = cv::Mat::zeros(3, sizes, CV_8UC3);
-    image.forEach<Pixel>([&](Pixel& pixel, const int position[]) -> void {
-        pixel.x = position[0];
-        pixel.y = position[1];
-        pixel.z = position[2];
-        // Storing RGB values
-        ImageColor.Add(new FColor(pixel.x, pixel.y, pixel.z, 1));
+    //Wrapped in a render command for performance
+    ENQUEUE_RENDER_COMMAND(WriteOpenCVTexture)(
+        [RTarget_Raw = RenderTarget_Raw, RTexture_Pre = OpenCV_Texture2D_Pre, RTexture_Post = OpenCV_Texture2D_Post](FRHICommandList& RHICmdList)
+        {
+            TArray<FColor> ColorD;
+            ColorD.AddDefaulted(RTarget_Raw->SizeX * RTarget_Raw->SizeY);
+            //FTextureReference tref = RTarget_Raw->TextureReference;
+            //FTextureReferenceRHIRef rhiref = tref.TextureReferenceRHI;
+            //rhiref.
+            //UTexture2D* RTexture_Pre = RTarget_Raw->ConstructTexture2D(RTarget_Raw, "AlphaTex", EObjectFlags::RF_NoFlags, CTF_DeferCompression);
+            //This function will allocate memory for FormattedImageData pointer and then you can read from here all the pixels info
+            //RTexture_Pre->PlatformData->Mips[0].BulkData.GetCopy((void**)&ColorD);
+            //RTexture_Pre->PlatformData->Mips[0].BulkData.GetCopy((void**)&ColorD);
+            void* TextureData1 = RTexture_Pre->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
+            void* TextureData2 = RTexture_Post->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE);
+            const int32 TextureDataSize = ColorD.Num() * 4;
+            // set the texture data
+            FMemory::Memcpy(TextureData1, TextureData2, TextureDataSize);
+            //FMemory::Memcpy(TextureData, ColorD.GetData(), TextureDataSize);
+            RTexture_Pre->PlatformData->Mips[0].BulkData.Unlock();
+            RTexture_Post->PlatformData->Mips[0].BulkData.Unlock();
+            // Apply Texture changes to GPU memory
+            RTexture_Pre->UpdateResource();
+            RTexture_Post->UpdateResource();
+            RTarget_Raw->UpdateTexture2D(RTexture_Pre, TSF_BGRA8);
         });
+    return true;
+}
 
-    /*for (int i = 0; i < SrcHeight; i++)
-    {
-        for (int j = 0; j < SrcWidth; j++)
-        {
-            // Getting pixel rgb values
-            uint8 ImageR = pixelPtr[i * SrcWidth * NumberOfChannels + j * NumberOfChannels + 2]; // R
-            uint8 ImageG = pixelPtr[i * SrcWidth * NumberOfChannels + j * NumberOfChannels + 1]; // G
-            uint8 ImageB = pixelPtr[i * SrcWidth * NumberOfChannels + j * NumberOfChannels + 0]; // B
+bool AFaceDetector::FindFace() {
+    //cvCascadeClassifier_Face.load(TCHAR_TO_UTF8(*Path_Cascade_Face));
+    //return false;
+    cvMat_gray = cvMat;
 
-            // Storing RGB values
-            ImageColor.Add(new FColor(ImageR, ImageG, ImageB, 1));
-        }
-    }*/
+    // Convert the image to grayscale
+    cv::cvtColor(cvMat, cvMat_gray, cv::COLOR_BGR2GRAY);
+    cv::equalizeHist(cvMat_gray, cvMat_gray);
+    //-- Detect faces
 
-    // Lock the texture so it can be modified
-    uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
-
-    // Create base mip.
-    uint8* DestPtr = NULL;
-    const FColor* SrcPtr = NULL;
-    for (int32 y = 1; y <= SrcHeight; y++)
-    {
-        int CurrentIndex = (SrcHeight - y) * (SrcWidth);
-        DestPtr = &MipData[CurrentIndex * sizeof(FColor)];
-        SrcPtr = const_cast<FColor*>(ImageColor[CurrentIndex]);
-        for (int32 x = 0; x < SrcWidth; x++)
-        {
-            *DestPtr++ = SrcPtr->B;
-            *DestPtr++ = SrcPtr->G;
-            *DestPtr++ = SrcPtr->R;
-            *DestPtr++ = (UseAlpha ? SrcPtr->A : 0xFF);
-
-            SrcPtr++;
-        }
-    }
-
+    cvCascadeClassifier_Face.detectMultiScale(cvMat_gray, faces);
     /*
-    * Facts:
-    * 1. Texture2D is actually being generated just a half.
-    * 2. 
-    */
+    for (size_t i = 0; i < faces.size(); i++)
+    {
+        cv::Point center(faces[i].x + faces[i].width / 2, faces[i].y + faces[i].height / 2);
+        cv::ellipse(mat, center, cv::Size(faces[i].width / 2, faces[i].height / 2), 0, 0, 360, cv::Scalar(255, 0, 255), 4);
+        cv::Mat faceROI = mat_gray(faces[i]);
 
-    // Unlock the texture
-    FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
-    FrameAsTexture->UpdateResource();
-    UE_LOG(LogTemp, Warning, TEXT("sizeX: %d"), FrameAsTexture->GetSizeX());
+        //-- In each face, detect eyes
+        std::vector<Rect> eyes;
+        cvCascadeClassifier_Eyes.detectMultiScale(faceROI, eyes);
+        for (size_t j = 0; j < eyes.size(); j++)
+        {
+            cv::Point eye_center(faces[i].x + eyes[j].x + eyes[j].width / 2, faces[i].y + eyes[j].y + eyes[j].height / 2);
+            int radius = cvRound((eyes[j].width + eyes[j].height) * 0.25);
+            cv::circle(mat, eye_center, radius, cv::Scalar(255, 0, 0), 4);
+        }
+
+    }
+    */
+    return true;
+}
+
+//increment camera by one then validate exists
+void AFaceDetector::NextCamera()
+{
+    CameraID += 1;
+    ValidateCameraID();
+}
+//increment video track by one then validate exists
+void AFaceDetector::NextVideoTrack()
+{
+    VideoTrackID += 1;
+    ValidateVideoTrackID();
 }
