@@ -9,7 +9,7 @@
 #include "GameFramework/Actor.h"
 #include "OpenCVReader.generated.h"
 
-UENUM()
+UENUM(BlueprintType)
 enum EInputMode
 {
     Camera UMETA(DisplayName = "Camera"),
