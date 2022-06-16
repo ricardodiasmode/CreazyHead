@@ -7,6 +7,10 @@
 #include "Runtime/Engine/Classes/Engine/TextureRenderTarget2D.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "GameFramework/Actor.h"
+
+#include "opencv2/objdetect.hpp"
+#include "opencv2/imgproc.hpp"
+
 #include "OpenCVReader.generated.h"
 
 UENUM(BlueprintType)
