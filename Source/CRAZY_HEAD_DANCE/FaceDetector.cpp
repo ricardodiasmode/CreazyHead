@@ -114,7 +114,7 @@ void AFaceDetector::ConvertMatToOpenCV()
     FrameAsTexture = UTexture2D::CreateTransient(
         SrcWidth,
         SrcHeight,
-        PF_B8G8R8A8
+        PF_B8G8R8A8 // probably here is the issue
     );
 
     // Getting SrcData
@@ -125,11 +125,6 @@ void AFaceDetector::ConvertMatToOpenCV()
     uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
 
     FMemory::Memcpy(MipData, pixelPtr, SrcWidth * SrcHeight * NumberOfChannels);
-    /*
-    * Facts:
-    * 1. Texture2D is actually being generated just a half.
-    * 2. 
-    */
 
     // Unlock the texture
     FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
