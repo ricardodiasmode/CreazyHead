@@ -108,7 +108,7 @@ void AFaceDetector::ConvertMatToOpenCV()
     cv::imshow("img", resized);
     const int32 SrcWidth = resized.cols;
     const int32 SrcHeight = resized.rows;
-    //UE_LOG(LogTemp, Warning, TEXT("SRCsizeX: %d"), SrcWidth);
+
     const bool UseAlpha = false;
     // Create the texture
     FrameAsTexture = UTexture2D::CreateTransient(
@@ -121,6 +121,16 @@ void AFaceDetector::ConvertMatToOpenCV()
     uint8_t* pixelPtr = (uint8_t*)resized.data;
     const int NumberOfChannels = resized.channels();
 
+    TArray<char> Aux;
+    // Adding alpha to data
+    for (int i = 0; i < SrcWidth * SrcHeight * NumberOfChannels; i++)
+    {
+        Aux.Add(pixelPtr[i]);
+        if (i % 3 == 0)
+            Aux.Add(0);
+    }
+    pixelPtr = (uint8_t*)&Aux[0];
+
     // Lock the texture so it can be modified
     uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
 
@@ -129,5 +139,5 @@ void AFaceDetector::ConvertMatToOpenCV()
     // Unlock the texture
     FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
     FrameAsTexture->UpdateResource();
-    UE_LOG(LogTemp, Warning, TEXT("sizeX: %d"), FrameAsTexture->GetSizeX());
+    UE_LOG(LogTemp, Warning, TEXT("NumChannels: %d"), (NumberOfChannels+1));
 }
