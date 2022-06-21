@@ -114,30 +114,33 @@ void AFaceDetector::ConvertMatToOpenCV()
     FrameAsTexture = UTexture2D::CreateTransient(
         SrcWidth,
         SrcHeight,
-        PF_B8G8R8A8 // probably here is the issue
+        PF_B8G8R8A8 
     );
 
     // Getting SrcData
     uint8_t* pixelPtr = (uint8_t*)resized.data;
     const int NumberOfChannels = resized.channels();
 
-    TArray<char> Aux;
+    TArray<uint8_t> Aux;
     // Adding alpha to data
+    int j = 0;
     for (int i = 0; i < SrcWidth * SrcHeight * NumberOfChannels; i++)
     {
         Aux.Add(pixelPtr[i]);
-        if (i % 3 == 0)
-            Aux.Add(0);
+        if (j++ == 2)
+        {
+            Aux.Add((uint8_t)0);
+            j = 0;
+        }
     }
     pixelPtr = (uint8_t*)&Aux[0];
 
     // Lock the texture so it can be modified
     uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
 
-    FMemory::Memcpy(MipData, pixelPtr, SrcWidth * SrcHeight * NumberOfChannels);
+    FMemory::Memcpy(MipData, pixelPtr, SrcWidth * SrcHeight * (NumberOfChannels+1));
 
     // Unlock the texture
     FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
     FrameAsTexture->UpdateResource();
-    UE_LOG(LogTemp, Warning, TEXT("NumChannels: %d"), (NumberOfChannels+1));
 }
