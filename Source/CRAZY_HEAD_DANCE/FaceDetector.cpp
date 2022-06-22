@@ -4,6 +4,7 @@
 #include "FaceDetector.h"
 #include "Engine/Texture.h"
 #include "ImageUtils.h"
+#include "Kismet/KismetMathLibrary.h"
 
 // Sets default values
 AFaceDetector::AFaceDetector()
@@ -47,13 +48,6 @@ void AFaceDetector::DetectAndDraw()
     if (frame.empty())
         return;
 
-    CurrentRectangles = face_detector.detect_face_rectangles(frame);
-    
-    // Draw a rectangle around faces
-    //cv::Scalar color(0, 105, 205);
-    //int frame_thickness = 4;
-    //for (const auto& r : CurrentRectangles)
-    //    cv::rectangle(frame, r, color, frame_thickness);
     ConvertMatToOpenCV();
 }
 
@@ -103,8 +97,17 @@ std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& fra
 
 void AFaceDetector::ConvertMatToOpenCV()
 {
-    cv::resize(frame, resized, cv::Size(frame.cols/3, frame.rows/3));
-    cv::imshow("img", resized);
+    cv::Mat source;
+    cv::resize(frame, source, cv::Size(frame.cols/3, frame.rows/3));
+    cv::imshow("img", source);
+
+    CurrentRectangles = face_detector.detect_face_rectangles(source);
+
+    // Convert to a 4 channels img
+    resized = cv::Mat(source.size(), CV_MAKE_TYPE(source.depth(), 4));
+    int from_to[] = { 0,0, 1,1, 2,2, 2,3 };
+    cv::mixChannels(&source, 1, &resized, 1, from_to, 4);
+
     const int32 SrcWidth = resized.cols;
     const int32 SrcHeight = resized.rows;
 
@@ -115,31 +118,16 @@ void AFaceDetector::ConvertMatToOpenCV()
         PF_B8G8R8A8 
     );
 
-    // We need to do this before, since we are adding alpha later
-    RemoveBackground();
+    // We wanna only faces on the img
+    //RemoveBackground(); // THIS IS CRASHING
 
     // Getting SrcData
     pixelPtr = (uint8_t*)resized.data;
-    const int NumberOfChannels = resized.channels();
-
-    TArray<uint8_t> Aux;
-    // Adding alpha to data
-    int j = 0;
-    for (int i = 0; i < SrcWidth * SrcHeight * NumberOfChannels; i++)
-    {
-        Aux.Add(pixelPtr[i]);
-        if (j++ == 2)
-        {
-            Aux.Add((uint8_t)0);
-            j = 0;
-        }
-    }
-    pixelPtr = (uint8_t*)&Aux[0];
 
     // Lock the texture so it can be modified
     uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
 
-    FMemory::Memcpy(MipData, pixelPtr, SrcWidth * SrcHeight * (NumberOfChannels+1));
+    FMemory::Memcpy(MipData, pixelPtr, SrcWidth * SrcHeight * (4));
 
     // Unlock the texture
     FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
@@ -148,6 +136,8 @@ void AFaceDetector::ConvertMatToOpenCV()
 
 void AFaceDetector::RemoveBackground()
 {
+    if (resized.empty())
+        return;
     // Remove background for each face
     for (cv::Rect CurrentRect : CurrentRectangles)
     {
@@ -157,7 +147,7 @@ void AFaceDetector::RemoveBackground()
         int YInitialLoc = CurrentRect.y;
         int YSize = CurrentRect.height;
 
-        cv::Vec3b PixelMean;
+        TArray<FVector> PixelMeanArray;
         // Now, inside the rectangle we get the mean of colors
         // Note that top left pos of the rectangle is pixelPtr[XInitialLoc*YInitialLoc]
         // This loop walk horizontally inside rectangle
@@ -167,13 +157,62 @@ void AFaceDetector::RemoveBackground()
             for (int CurrentVerticalOffset = YInitialLoc; CurrentVerticalOffset <= YInitialLoc+YSize ; CurrentVerticalOffset += resized.cols)
             {
                 // Current pixel collor
-                cv::Vec3b bgrPixel = resized.at<cv::Vec3b>(CurrentHorizontalOffset, CurrentVerticalOffset);
+                cv::Vec4b bgrPixel = resized.at<cv::Vec4b>(CurrentHorizontalOffset, CurrentVerticalOffset);
 
-                // ?? PixelMean = ;
+                // Adding pixel color to array
+                PixelMeanArray.Add(FVector(bgrPixel[0], bgrPixel[1], bgrPixel[2]));
             }
         }
 
+        // Actually getting the mean
+        float XMean = 0.0;
+        float YMean = 0.0;
+        float ZMean = 0.0;
+        for (FVector CurrentPix : PixelMeanArray)
+        {
+            XMean += CurrentPix.X;
+            YMean += CurrentPix.Y;
+            ZMean += CurrentPix.Z;
+        }
+        XMean = XMean / PixelMeanArray.Num(); // B
+        YMean = YMean / PixelMeanArray.Num(); // G
+        ZMean = ZMean / PixelMeanArray.Num(); // R
+
         // Now, every pixel that is in a 1.5x radius from rectangle and is close to the mean that we found,
         // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
+
+        // First we get the center of the rec
+        int XCenter = XInitialLoc + (XInitialLoc + CurrentRect.x) / 2;
+        int YCenter = YInitialLoc + (YInitialLoc + CurrentRect.y) / 2;
+        FVector2D CenterLoc(XCenter, YCenter);
+        // Then the dist from center to rec diagonal
+        float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
+        for (int XPix =0;XPix < resized.cols;XPix++)
+        {
+            for (int YPix =0;YPix < resized.rows;YPix++)
+            {
+                FVector2D PixelLoc(XPix, YPix);
+
+                // Whether or not pixel is too far from center
+                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * 1.5)
+                {
+                    // Set alpha to 0
+                    cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(XPix, YPix);
+                    pixelRef[3] = 0;
+                }
+                else
+                {
+                    // If is not far from center, then we check if is close to mean with a 10px tolerance
+                    cv::Vec4b pixel = resized.at<cv::Vec4b>(XPix, YPix);
+                    if (!(UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], XMean, 10) &&
+                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, 10) &&
+                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, 10)))
+                    {
+                        cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(XPix, YPix);
+                        pixelRef[3] = 0;
+                    }
+                }
+            }
+        }
     }
 }
