@@ -46,14 +46,14 @@ void AFaceDetector::DetectAndDraw()
     Vcapture >> frame;
     if (frame.empty())
         return;
-        
-    AuxFaceDetector face_detector;
 
-    std::vector<cv::Rect> CurrentRectangles = face_detector.detect_face_rectangles(frame);
-    cv::Scalar color(0, 105, 205);
-    int frame_thickness = 4;
-    for (const auto& r : CurrentRectangles)
-        cv::rectangle(frame, r, color, frame_thickness);
+    CurrentRectangles = face_detector.detect_face_rectangles(frame);
+    
+    // Draw a rectangle around faces
+    //cv::Scalar color(0, 105, 205);
+    //int frame_thickness = 4;
+    //for (const auto& r : CurrentRectangles)
+    //    cv::rectangle(frame, r, color, frame_thickness);
     ConvertMatToOpenCV();
 }
 
@@ -103,13 +103,11 @@ std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& fra
 
 void AFaceDetector::ConvertMatToOpenCV()
 {
-    cv::Mat resized;
     cv::resize(frame, resized, cv::Size(frame.cols/3, frame.rows/3));
     cv::imshow("img", resized);
     const int32 SrcWidth = resized.cols;
     const int32 SrcHeight = resized.rows;
 
-    const bool UseAlpha = false;
     // Create the texture
     FrameAsTexture = UTexture2D::CreateTransient(
         SrcWidth,
@@ -117,8 +115,11 @@ void AFaceDetector::ConvertMatToOpenCV()
         PF_B8G8R8A8 
     );
 
+    // We need to do this before, since we are adding alpha later
+    RemoveBackground();
+
     // Getting SrcData
-    uint8_t* pixelPtr = (uint8_t*)resized.data;
+    pixelPtr = (uint8_t*)resized.data;
     const int NumberOfChannels = resized.channels();
 
     TArray<uint8_t> Aux;
@@ -143,4 +144,36 @@ void AFaceDetector::ConvertMatToOpenCV()
     // Unlock the texture
     FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
     FrameAsTexture->UpdateResource();
+}
+
+void AFaceDetector::RemoveBackground()
+{
+    // Remove background for each face
+    for (cv::Rect CurrentRect : CurrentRectangles)
+    {
+        // We need to know where is the face on the image
+        int XInitialLoc = CurrentRect.x;
+        int XSize = CurrentRect.width;
+        int YInitialLoc = CurrentRect.y;
+        int YSize = CurrentRect.height;
+
+        cv::Vec3b PixelMean;
+        // Now, inside the rectangle we get the mean of colors
+        // Note that top left pos of the rectangle is pixelPtr[XInitialLoc*YInitialLoc]
+        // This loop walk horizontally inside rectangle
+        for (int CurrentHorizontalOffset = XInitialLoc; CurrentHorizontalOffset <= XInitialLoc+ XSize; CurrentHorizontalOffset++)
+        {
+            // This loop walk vertically inside the rectangle
+            for (int CurrentVerticalOffset = YInitialLoc; CurrentVerticalOffset <= YInitialLoc+YSize ; CurrentVerticalOffset += resized.cols)
+            {
+                // Current pixel collor
+                cv::Vec3b bgrPixel = resized.at<cv::Vec3b>(CurrentHorizontalOffset, CurrentVerticalOffset);
+
+                // ?? PixelMean = ;
+            }
+        }
+
+        // Now, every pixel that is in a 1.5x radius from rectangle and is close to the mean that we found,
+        // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
+    }
 }

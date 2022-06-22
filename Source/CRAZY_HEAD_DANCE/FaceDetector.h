@@ -13,40 +13,7 @@
 
 class UTexture2D;
 
-UCLASS()
-class CRAZY_HEAD_DANCE_API AFaceDetector : public AActor
-{
-	GENERATED_BODY()
-private:
-	// VideoCapture class for playing video for which faces to be detected
-	cv::VideoCapture Vcapture;
-	cv::Mat frame;
-
-	// PreDefined trained XML classifiers with facial features
-	cv::CascadeClassifier cascade;
-
-public:
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-        UTexture2D* FrameAsTexture;
-
-private:
-	void DetectAndDraw();
-    void ConvertMatToOpenCV();
-
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
-public:
-    // Sets default values for this actor's properties
-    AFaceDetector();
-
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
-};
-
-class AuxFaceDetector 
+class AuxFaceDetector
 {
 public:
     explicit AuxFaceDetector();
@@ -69,5 +36,45 @@ private:
     const cv::Scalar mean_values_;
     /// Face detection confidence threshold
     const float confidence_threshold_;
+
+};
+
+UCLASS()
+class CRAZY_HEAD_DANCE_API AFaceDetector : public AActor
+{
+	GENERATED_BODY()
+private:
+	// VideoCapture class for playing video for which faces to be detected
+	cv::VideoCapture Vcapture;
+	cv::Mat frame;
+    cv::Mat resized;
+    std::vector<cv::Rect> CurrentRectangles;
+
+    // Hold img data
+    uint8_t* pixelPtr;
+
+	// PreDefined trained XML classifiers with facial features
+	cv::CascadeClassifier cascade;
+    AuxFaceDetector face_detector;
+
+public:
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        UTexture2D* FrameAsTexture;
+
+private:
+	void DetectAndDraw();
+    void ConvertMatToOpenCV();
+    void RemoveBackground();
+
+protected:
+	// Called when the game starts or when spawned
+	virtual void BeginPlay() override;
+
+public:
+    // Sets default values for this actor's properties
+    AFaceDetector();
+
+	// Called every frame
+	virtual void Tick(float DeltaTime) override;
 
 };
