@@ -5,6 +5,7 @@
 #include "Engine/Texture.h"
 #include "ImageUtils.h"
 #include "Kismet/KismetMathLibrary.h"
+#include <opencv2/imgproc/types_c.h>
 
 // Sets default values
 AFaceDetector::AFaceDetector()
@@ -104,9 +105,7 @@ void AFaceDetector::ConvertMatToOpenCV()
     CurrentRectangles = face_detector.detect_face_rectangles(source);
 
     // Convert to a 4 channels img
-    resized = cv::Mat(source.size(), CV_MAKE_TYPE(source.depth(), 4));
-    int from_to[] = { 0,0, 1,1, 2,2, 2,3 };
-    cv::mixChannels(&source, 1, &resized, 1, from_to, 4);
+    cv::cvtColor(source, resized, CV_BGR2BGRA);
 
     const int32 SrcWidth = resized.cols;
     const int32 SrcHeight = resized.rows;
@@ -119,7 +118,7 @@ void AFaceDetector::ConvertMatToOpenCV()
     );
 
     // We wanna only faces on the img
-    //RemoveBackground(); // THIS IS CRASHING
+    RemoveBackground();
 
     // Getting SrcData
     pixelPtr = (uint8_t*)resized.data;
@@ -138,6 +137,7 @@ void AFaceDetector::RemoveBackground()
 {
     if (resized.empty())
         return;
+
     // Remove background for each face
     for (cv::Rect CurrentRect : CurrentRectangles)
     {
@@ -186,6 +186,7 @@ void AFaceDetector::RemoveBackground()
         int YCenter = YInitialLoc + (YInitialLoc + CurrentRect.y) / 2;
         FVector2D CenterLoc(XCenter, YCenter);
         // Then the dist from center to rec diagonal
+        
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
         for (int XPix =0;XPix < resized.cols;XPix++)
         {
@@ -193,9 +194,13 @@ void AFaceDetector::RemoveBackground()
             {
                 FVector2D PixelLoc(XPix, YPix);
 
+                if (GEngine)
+                    GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("wtf!"));
                 // Whether or not pixel is too far from center
                 if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * 1.5)
                 {
+                    if (GEngine)
+                        GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("a!"));
                     // Set alpha to 0
                     cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(XPix, YPix);
                     pixelRef[3] = 0;
@@ -208,6 +213,8 @@ void AFaceDetector::RemoveBackground()
                         UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, 10) &&
                         UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, 10)))
                     {
+                        if (GEngine)
+                            GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("b!"));
                         cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(XPix, YPix);
                         pixelRef[3] = 0;
                     }
