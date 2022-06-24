@@ -100,7 +100,6 @@ void AFaceDetector::ConvertMatToOpenCV()
 {
     cv::Mat source;
     cv::resize(frame, source, cv::Size(frame.cols/3, frame.rows/3));
-    cv::imshow("img", source);
 
     CurrentRectangles = face_detector.detect_face_rectangles(source);
 
@@ -119,6 +118,7 @@ void AFaceDetector::ConvertMatToOpenCV()
 
     // We wanna only faces on the img
     RemoveBackground();
+    cv::imshow("img", resized);
 
     // Getting SrcData
     pixelPtr = (uint8_t*)resized.data;
@@ -188,34 +188,28 @@ void AFaceDetector::RemoveBackground()
         // Then the dist from center to rec diagonal
         
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
-        for (int XPix =0;XPix < resized.cols;XPix++)
+        for (int YPix = 0; YPix < resized.rows; YPix++)
         {
-            for (int YPix =0;YPix < resized.rows;YPix++)
+            for (int XPix = 0; XPix < resized.cols ; XPix++)
             {
                 FVector2D PixelLoc(XPix, YPix);
 
-                if (GEngine)
-                    GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("wtf!"));
                 // Whether or not pixel is too far from center
                 if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * 1.5)
                 {
-                    if (GEngine)
-                        GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("a!"));
                     // Set alpha to 0
-                    cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(XPix, YPix);
+                    cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
                     pixelRef[3] = 0;
                 }
                 else
                 {
                     // If is not far from center, then we check if is close to mean with a 10px tolerance
-                    cv::Vec4b pixel = resized.at<cv::Vec4b>(XPix, YPix);
+                    cv::Vec4b pixel = resized.at<cv::Vec4b>(YPix, XPix);
                     if (!(UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], XMean, 10) &&
                         UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, 10) &&
                         UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, 10)))
                     {
-                        if (GEngine)
-                            GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("b!"));
-                        cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(XPix, YPix);
+                        cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
                         pixelRef[3] = 0;
                     }
                 }
