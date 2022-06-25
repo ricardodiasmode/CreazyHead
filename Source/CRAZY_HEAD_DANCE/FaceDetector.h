@@ -48,6 +48,7 @@ private:
 	cv::VideoCapture Vcapture;
 	cv::Mat frame;
     cv::Mat resized;
+    cv::Mat grey;
     std::vector<cv::Rect> CurrentRectangles;
 
     // Hold img data

@@ -105,6 +105,8 @@ void AFaceDetector::ConvertMatToOpenCV()
 
     // Convert to a 4 channels img
     cv::cvtColor(source, resized, CV_BGR2BGRA);
+    // Get the grey
+    cv::cvtColor(source, grey, CV_BGR2GRAY);
 
     const int32 SrcWidth = resized.cols;
     const int32 SrcHeight = resized.rows;
@@ -148,10 +150,11 @@ void AFaceDetector::RemoveBackground()
         int YSize = CurrentRect.height;
 
         TArray<FVector> PixelMeanArray;
-        // Now, inside the rectangle we get the mean of colors
+        // Now, inside the rectangle we get the mean of colors in grayscale
         // Note that top left pos of the rectangle is pixelPtr[XInitialLoc*YInitialLoc]
         // This loop walk horizontally inside rectangle
-        float RecSizeReduction = 1.f;
+
+        float RecSizeReduction = 0.2f;
         for (int CurrentHorizontalOffset = XInitialLoc+(XSize* RecSizeReduction); CurrentHorizontalOffset <= XInitialLoc+ XSize - (XSize * RecSizeReduction); CurrentHorizontalOffset++)
         {
             // This loop walk vertically inside the rectangle
@@ -187,12 +190,10 @@ void AFaceDetector::RemoveBackground()
         int YCenter = YInitialLoc + (YSize/2);
         FVector2D CenterLoc(XCenter, YCenter);
         // Then the dist from center to rec diagonal
-        UE_LOG(LogTemp, Warning, TEXT("p mean: %f %f %f"), XMean, YMean, ZMean);
-
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
-        for (int YPix = 0; YPix < resized.rows; YPix++)
+        for (int YPix = 0; YPix < grey.rows; YPix++)
         {
-            for (int XPix = 0; XPix < resized.cols ; XPix++)
+            for (int XPix = 0; XPix < grey.cols ; XPix++)
             {
                 FVector2D PixelLoc(XPix, YPix);
 
@@ -206,20 +207,33 @@ void AFaceDetector::RemoveBackground()
                 }
                 else
                 {
-                    // If is not far from center, then we check if is close to mean with a px tolerance
-                    int PixelTolerance = 20;
-                    cv::Vec4b pixel = resized.at<cv::Vec4b>(YPix, XPix);
-                    if (!(UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], XMean, PixelTolerance) &&
-                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, PixelTolerance) &&
-                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, PixelTolerance)))
+                    // Whether or not pixel is too close from center
+                    float CloseToCenterMultiplier = 0.5f;
+                    if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplier)
                     {
+                        // Set alpha to 1
                         cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
-                        pixelRef[3] = 0;
+                        pixelRef[3] = 255;
                     }
                     else
                     {
-                        cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
-                        pixelRef[3] = 255;
+                        // If is not far from center, then we check if is close to mean with a px tolerance
+                        int PixelTolerance = 25;
+                        cv::Vec4b pixel = resized.at<cv::Vec4b>(YPix, XPix);
+                        if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], XMean, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, PixelTolerance))
+                        {
+                            // Set alpha to 1
+                            cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
+                            pixelRef[3] = 255;
+                        }
+                        else
+                        {
+                            // Set alpha to 0
+                            cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
+                            pixelRef[3] = 0;
+                        }
                     }
                 }
             }
