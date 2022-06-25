@@ -151,10 +151,11 @@ void AFaceDetector::RemoveBackground()
         // Now, inside the rectangle we get the mean of colors
         // Note that top left pos of the rectangle is pixelPtr[XInitialLoc*YInitialLoc]
         // This loop walk horizontally inside rectangle
-        for (int CurrentHorizontalOffset = XInitialLoc; CurrentHorizontalOffset <= XInitialLoc+ XSize; CurrentHorizontalOffset++)
+        float RecSizeReduction = 1.f;
+        for (int CurrentHorizontalOffset = XInitialLoc+(XSize* RecSizeReduction); CurrentHorizontalOffset <= XInitialLoc+ XSize - (XSize * RecSizeReduction); CurrentHorizontalOffset++)
         {
             // This loop walk vertically inside the rectangle
-            for (int CurrentVerticalOffset = YInitialLoc; CurrentVerticalOffset <= YInitialLoc+YSize ; CurrentVerticalOffset += resized.cols)
+            for (int CurrentVerticalOffset = YInitialLoc + (YSize * RecSizeReduction); CurrentVerticalOffset <= YInitialLoc+YSize - (YSize * RecSizeReduction); CurrentVerticalOffset += resized.cols)
             {
                 // Current pixel collor
                 cv::Vec4b bgrPixel = resized.at<cv::Vec4b>(CurrentHorizontalOffset, CurrentVerticalOffset);
@@ -182,11 +183,12 @@ void AFaceDetector::RemoveBackground()
         // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
 
         // First we get the center of the rec
-        int XCenter = XInitialLoc + (XInitialLoc + CurrentRect.x) / 2;
-        int YCenter = YInitialLoc + (YInitialLoc + CurrentRect.y) / 2;
+        int XCenter = XInitialLoc + (XSize/2);
+        int YCenter = YInitialLoc + (YSize/2);
         FVector2D CenterLoc(XCenter, YCenter);
         // Then the dist from center to rec diagonal
-        
+        UE_LOG(LogTemp, Warning, TEXT("p mean: %f %f %f"), XMean, YMean, ZMean);
+
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
         for (int YPix = 0; YPix < resized.rows; YPix++)
         {
@@ -195,7 +197,8 @@ void AFaceDetector::RemoveBackground()
                 FVector2D PixelLoc(XPix, YPix);
 
                 // Whether or not pixel is too far from center
-                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * 1.5)
+                float DistToCenterMultiplier = 1.f;
+                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplier)
                 {
                     // Set alpha to 0
                     cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
@@ -203,14 +206,20 @@ void AFaceDetector::RemoveBackground()
                 }
                 else
                 {
-                    // If is not far from center, then we check if is close to mean with a 10px tolerance
+                    // If is not far from center, then we check if is close to mean with a px tolerance
+                    int PixelTolerance = 20;
                     cv::Vec4b pixel = resized.at<cv::Vec4b>(YPix, XPix);
-                    if (!(UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], XMean, 10) &&
-                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, 10) &&
-                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, 10)))
+                    if (!(UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], XMean, PixelTolerance) &&
+                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, PixelTolerance) &&
+                        UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, PixelTolerance)))
                     {
                         cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
                         pixelRef[3] = 0;
+                    }
+                    else
+                    {
+                        cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
+                        pixelRef[3] = 255;
                     }
                 }
             }
