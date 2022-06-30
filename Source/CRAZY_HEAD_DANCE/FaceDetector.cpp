@@ -99,31 +99,36 @@ std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& fra
 void AFaceDetector::ConvertMatToOpenCV()
 {
     cv::Mat source;
-    cv::resize(frame, source, cv::Size(frame.cols/3, frame.rows/3));
+    cv::resize(frame, source, cv::Size(frame.cols/2, frame.rows/2));
 
     CurrentRectangles = face_detector.detect_face_rectangles(source);
 
     // Convert to a 4 channels img
     cv::cvtColor(source, resized, CV_BGR2BGRA);
-    // Get the grey
-    cv::cvtColor(source, grey, CV_BGR2GRAY);
 
-    const int32 SrcWidth = resized.cols;
-    const int32 SrcHeight = resized.rows;
+    if (resized.empty())
+        return;
+
+    // We wanna only faces on the img
+    RemoveBackground();
+
+    if (FacesAsMat.empty())
+        return;
+
+    cv::imshow("img", FacesAsMat);
+
+    const int32 SrcWidth = FacesAsMat.cols;
+    const int32 SrcHeight = FacesAsMat.rows;
+
+    // Getting SrcData
+    pixelPtr = (uint8_t*)FacesAsMat.data;
 
     // Create the texture
     FrameAsTexture = UTexture2D::CreateTransient(
         SrcWidth,
         SrcHeight,
-        PF_B8G8R8A8 
+        PF_B8G8R8A8
     );
-
-    // We wanna only faces on the img
-    RemoveBackground();
-    cv::imshow("img", resized);
-
-    // Getting SrcData
-    pixelPtr = (uint8_t*)resized.data;
 
     // Lock the texture so it can be modified
     uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
@@ -137,9 +142,6 @@ void AFaceDetector::ConvertMatToOpenCV()
 
 void AFaceDetector::RemoveBackground()
 {
-    if (resized.empty())
-        return;
-
     // Remove background for each face
     for (cv::Rect CurrentRect : CurrentRectangles)
     {
@@ -148,13 +150,29 @@ void AFaceDetector::RemoveBackground()
         int XSize = CurrentRect.width;
         int YInitialLoc = CurrentRect.y;
         int YSize = CurrentRect.height;
+        // Creating mat around faces
+        uchar* recdata = new uchar[XSize*YSize*4];
+        uchar* resizeddata = resized.data;
+        int i = 0;
+        for (int verticalOffset = XSize + (YInitialLoc * resized.cols); verticalOffset < (YInitialLoc+YSize)*resized.cols ; verticalOffset+=resized.cols)
+        {
+            for (int horizontalOffset = 0; horizontalOffset < XSize; horizontalOffset+=4)
+            {
+                recdata[i] = resizeddata[(verticalOffset*4) + (horizontalOffset*4)];
+                recdata[i+1] = resizeddata[(verticalOffset * 4) + (horizontalOffset * 4) +1];
+                recdata[i+2] = resizeddata[(verticalOffset * 4) + (horizontalOffset * 4) +2];
+                recdata[i+3] = resizeddata[(verticalOffset * 4) + (horizontalOffset * 4) +3];
+                i+=4;
+            }
+        }
+
+        FacesAsMat = cv::Mat(cv::Size(XSize, YSize), CV_8UC4, recdata);
 
         TArray<FVector> PixelMeanArray;
         // Now, inside the rectangle we get the mean of colors in grayscale
         // Note that top left pos of the rectangle is pixelPtr[XInitialLoc*YInitialLoc]
         // This loop walk horizontally inside rectangle
 
-        float RecSizeReduction = 0.2f;
         for (int CurrentHorizontalOffset = XInitialLoc+(XSize* RecSizeReduction); CurrentHorizontalOffset <= XInitialLoc+ XSize - (XSize * RecSizeReduction); CurrentHorizontalOffset++)
         {
             // This loop walk vertically inside the rectangle
@@ -168,7 +186,7 @@ void AFaceDetector::RemoveBackground()
             }
         }
 
-        // Actually getting the mean
+        // Actually getting the mean and standard deviation
         float XMean = 0.0;
         float YMean = 0.0;
         float ZMean = 0.0;
@@ -178,9 +196,45 @@ void AFaceDetector::RemoveBackground()
             YMean += CurrentPix.Y;
             ZMean += CurrentPix.Z;
         }
+        // Actually getting the mean
         XMean = XMean / PixelMeanArray.Num(); // B
         YMean = YMean / PixelMeanArray.Num(); // G
         ZMean = ZMean / PixelMeanArray.Num(); // R
+
+        float XSum = 0;
+        float YSum = 0;
+        float ZSum = 0;
+        for (FVector CurrentPix : PixelMeanArray)
+        {
+            XSum += pow(CurrentPix.X - XMean, 2);
+            YSum += pow(CurrentPix.Y - YMean, 2);
+            ZSum += pow(CurrentPix.Z - ZMean, 2);
+        }
+        // Actually getting the sd
+        float Xsd = sqrt(XSum / PixelMeanArray.Num());
+        float Ysd = sqrt(YSum / PixelMeanArray.Num());
+        float Zsd = sqrt(ZSum / PixelMeanArray.Num());
+
+        // Now we wanna a new mean that does not consider points that are too far from sd
+        float AdjustedXMean = 0.0;
+        float AdjustedYMean = 0.0;
+        float AdjustedZMean = 0.0;
+        for (FVector CurrentPix : PixelMeanArray)
+        {
+            if (abs(CurrentPix.X - XMean) > (Xsd/ MeanPrecisionMultiplier))
+                continue;
+            if (abs(CurrentPix.Y - YMean) > (Ysd/ MeanPrecisionMultiplier))
+                continue;
+            if (abs(CurrentPix.Z - ZMean) > (Zsd/ MeanPrecisionMultiplier))
+                continue;
+            AdjustedXMean += CurrentPix.X;
+            AdjustedYMean += CurrentPix.Y;
+            AdjustedZMean += CurrentPix.Z;
+        }
+        // Actually getting the mean
+        AdjustedXMean = AdjustedXMean / PixelMeanArray.Num(); // B
+        AdjustedYMean = AdjustedYMean / PixelMeanArray.Num(); // G
+        AdjustedZMean = AdjustedZMean / PixelMeanArray.Num(); // R
 
         // Now, every pixel that is in a 1.5x radius from rectangle and is close to the mean that we found,
         // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
@@ -191,15 +245,15 @@ void AFaceDetector::RemoveBackground()
         FVector2D CenterLoc(XCenter, YCenter);
         // Then the dist from center to rec diagonal
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
-        for (int YPix = 0; YPix < grey.rows; YPix++)
+        for (int YPix = 0; YPix < resized.rows; YPix++)
         {
-            for (int XPix = 0; XPix < grey.cols ; XPix++)
+            for (int XPix = 0; XPix < resized.cols ; XPix++)
             {
                 FVector2D PixelLoc(XPix, YPix);
 
                 // Whether or not pixel is too far from center
-                float DistToCenterMultiplier = 1.f;
-                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplier)
+                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplier ||
+                    abs(XPix - XCenter) > XSize * XDistTolerance)
                 {
                     // Set alpha to 0
                     cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
@@ -208,8 +262,8 @@ void AFaceDetector::RemoveBackground()
                 else
                 {
                     // Whether or not pixel is too close from center
-                    float CloseToCenterMultiplier = 0.5f;
-                    if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplier)
+                    if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplier &&
+                        abs(XPix - XCenter) < XSize * XCloseTolerance)
                     {
                         // Set alpha to 1
                         cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
@@ -218,11 +272,10 @@ void AFaceDetector::RemoveBackground()
                     else
                     {
                         // If is not far from center, then we check if is close to mean with a px tolerance
-                        int PixelTolerance = 25;
                         cv::Vec4b pixel = resized.at<cv::Vec4b>(YPix, XPix);
-                        if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], XMean, PixelTolerance) &&
-                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], YMean, PixelTolerance) &&
-                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], ZMean, PixelTolerance))
+                        if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], AdjustedXMean, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], AdjustedYMean, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], AdjustedZMean, PixelTolerance))
                         {
                             // Set alpha to 1
                             cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
