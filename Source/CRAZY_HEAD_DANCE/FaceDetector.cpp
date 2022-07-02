@@ -154,14 +154,15 @@ void AFaceDetector::RemoveBackground()
         uchar* recdata = new uchar[XSize*YSize*4];
         uchar* resizeddata = resized.data;
         int i = 0;
-        for (int verticalOffset = XSize + (YInitialLoc * resized.cols); verticalOffset < (YInitialLoc+YSize)*resized.cols ; verticalOffset+=resized.cols)
+        int NumChannels = resized.channels();
+        for (int verticalOffset = YInitialLoc; verticalOffset < YInitialLoc+YSize; verticalOffset++)
         {
-            for (int horizontalOffset = 0; horizontalOffset < XSize; horizontalOffset+=4)
+            for (int horizontalOffset = XInitialLoc; horizontalOffset < XInitialLoc+XSize; horizontalOffset++)
             {
-                recdata[i] = resizeddata[(verticalOffset*4) + (horizontalOffset*4)];
-                recdata[i+1] = resizeddata[(verticalOffset * 4) + (horizontalOffset * 4) +1];
-                recdata[i+2] = resizeddata[(verticalOffset * 4) + (horizontalOffset * 4) +2];
-                recdata[i+3] = resizeddata[(verticalOffset * 4) + (horizontalOffset * 4) +3];
+                recdata[i] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels)];
+                recdata[i+1] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) +1];
+                recdata[i+2] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) +2];
+                recdata[i+3] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) +3];
                 i+=4;
             }
         }
