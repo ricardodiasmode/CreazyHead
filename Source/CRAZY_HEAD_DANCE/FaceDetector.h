@@ -48,7 +48,7 @@ private:
 	cv::VideoCapture Vcapture;
 	cv::Mat frame;
     cv::Mat resized;
-    cv::Mat FacesAsMat;
+    TArray<cv::Mat> FacesAsMat;
     std::vector<cv::Rect> CurrentRectangles;
 
     // Hold img data
@@ -60,7 +60,7 @@ private:
 
 public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-        UTexture2D* FrameAsTexture;
+        TArray<UTexture2D*> FrameAsTexture;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
         int PixelTolerance = 100;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -75,6 +75,8 @@ public:
         float MeanPrecisionMultiplier = 1.f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
         float RecSizeReduction = 0.6f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        int FaceAdjustment = 10;
 
 private:
 	void DetectAndDraw();

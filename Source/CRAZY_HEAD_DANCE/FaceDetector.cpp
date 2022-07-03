@@ -112,68 +112,61 @@ void AFaceDetector::ConvertMatToOpenCV()
     // We wanna only faces on the img
     RemoveBackground();
 
-    if (FacesAsMat.empty())
+    if (FacesAsMat.Num() == 0)
         return;
 
-    cv::imshow("img", FacesAsMat);
+    FrameAsTexture.Empty();
+    for (int i = 0; i < FacesAsMat.Num(); i++)
+    {
+        if (FacesAsMat[i].empty())
+            continue;
 
-    const int32 SrcWidth = FacesAsMat.cols;
-    const int32 SrcHeight = FacesAsMat.rows;
+        cv::imshow("img", FacesAsMat[i]);
 
-    // Getting SrcData
-    pixelPtr = (uint8_t*)FacesAsMat.data;
+        const int32 SrcWidth = FacesAsMat[i].cols;
+        const int32 SrcHeight = FacesAsMat[i].rows;
 
-    // Create the texture
-    FrameAsTexture = UTexture2D::CreateTransient(
-        SrcWidth,
-        SrcHeight,
-        PF_B8G8R8A8
-    );
+        // Getting SrcData
+        pixelPtr = (uint8_t*)FacesAsMat[i].data;
 
-    // Lock the texture so it can be modified
-    uint8* MipData = static_cast<uint8*>(FrameAsTexture->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+        // Create the texture
+        FrameAsTexture.Add(UTexture2D::CreateTransient(
+            SrcWidth,
+            SrcHeight,
+            PF_B8G8R8A8
+        ));
 
-    FMemory::Memcpy(MipData, pixelPtr, SrcWidth * SrcHeight * (4));
+        // Lock the texture so it can be modified
+        uint8* MipData = static_cast<uint8*>(FrameAsTexture[i]->PlatformData->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
 
-    // Unlock the texture
-    FrameAsTexture->PlatformData->Mips[0].BulkData.Unlock();
-    FrameAsTexture->UpdateResource();
+        FMemory::Memcpy(MipData, pixelPtr, SrcWidth * SrcHeight * (4));
+
+        // Unlock the texture
+        FrameAsTexture[i]->PlatformData->Mips[0].BulkData.Unlock();
+        FrameAsTexture[i]->UpdateResource();
+    }
 }
 
 void AFaceDetector::RemoveBackground()
 {
+    FacesAsMat.Empty();
     // Remove background for each face
     for (cv::Rect CurrentRect : CurrentRectangles)
     {
-        // We need to know where is the face on the image
-        int XInitialLoc = CurrentRect.x;
-        int XSize = CurrentRect.width;
-        int YInitialLoc = CurrentRect.y;
-        int YSize = CurrentRect.height;
-        // Creating mat around faces
-        uchar* recdata = new uchar[XSize*YSize*4];
-        uchar* resizeddata = resized.data;
-        int i = 0;
-        int NumChannels = resized.channels();
-        for (int verticalOffset = YInitialLoc; verticalOffset < YInitialLoc+YSize; verticalOffset++)
-        {
-            for (int horizontalOffset = XInitialLoc; horizontalOffset < XInitialLoc+XSize; horizontalOffset++)
-            {
-                recdata[i] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels)];
-                recdata[i+1] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) +1];
-                recdata[i+2] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) +2];
-                recdata[i+3] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) +3];
-                i+=4;
-            }
-        }
+        // Check whether or not we can adjust detection without get out of image
+        int LocalFaceAdjustment = FaceAdjustment;
+        if (FaceAdjustment < 0 || FaceAdjustment * 2 + CurrentRect.width + CurrentRect.x  > resized.cols ||
+            FaceAdjustment * 2 + CurrentRect.height + CurrentRect.y > resized.rows)
+            FaceAdjustment = 0;
 
-        FacesAsMat = cv::Mat(cv::Size(XSize, YSize), CV_8UC4, recdata);
+        // We need to know where is the face on the image
+        int XInitialLoc = CurrentRect.x - FaceAdjustment;
+        int XSize = CurrentRect.width + FaceAdjustment*2;
+        int YInitialLoc = CurrentRect.y - FaceAdjustment;
+        int YSize = CurrentRect.height + FaceAdjustment * 2;
 
         TArray<FVector> PixelMeanArray;
-        // Now, inside the rectangle we get the mean of colors in grayscale
-        // Note that top left pos of the rectangle is pixelPtr[XInitialLoc*YInitialLoc]
         // This loop walk horizontally inside rectangle
-
         for (int CurrentHorizontalOffset = XInitialLoc+(XSize* RecSizeReduction); CurrentHorizontalOffset <= XInitialLoc+ XSize - (XSize * RecSizeReduction); CurrentHorizontalOffset++)
         {
             // This loop walk vertically inside the rectangle
@@ -292,5 +285,24 @@ void AFaceDetector::RemoveBackground()
                 }
             }
         }
+
+        // Creating mat around faces
+        uchar* recdata = new uchar[XSize * YSize * 4];
+        uchar* resizeddata = resized.data;
+        int i = 0;
+        int NumChannels = resized.channels();
+        for (int verticalOffset = YInitialLoc; verticalOffset < YInitialLoc + YSize; verticalOffset++)
+        {
+            for (int horizontalOffset = XInitialLoc; horizontalOffset < XInitialLoc + XSize; horizontalOffset++)
+            {
+                recdata[i] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels)];
+                recdata[i + 1] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 1];
+                recdata[i + 2] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 2];
+                recdata[i + 3] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 3];
+                i += 4;
+            }
+        }
+
+        FacesAsMat.Add(cv::Mat(cv::Size(XSize, YSize), CV_8UC4, recdata));
     }
 }
