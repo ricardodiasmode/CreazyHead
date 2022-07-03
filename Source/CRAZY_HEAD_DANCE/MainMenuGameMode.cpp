@@ -38,6 +38,11 @@ void AMainMenuGameMode::ReadDataFile()
 	FFileHelper::LoadFileToString(StringAux, *(FPaths::ProjectDir() + "Datafile.txt"));
 	UE_LOG(LogTemp, Warning, TEXT("Data file loaded"));
 
+	if (StringAux.Len() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Data file has nothing or was not found. Make sure the Datafile.txt is in ProjectFolder/CRAZY_HEAD_DANCE/"));
+	}
+
 	UE_LOG(LogTemp, Warning, TEXT("Cleaning comments"));
 	// Cleaning comments
 	int FirstIndex = 0;
@@ -48,6 +53,7 @@ void AMainMenuGameMode::ReadDataFile()
 		SecondIndex = StringAux.Find("*/**/**/**/*", ESearchCase::IgnoreCase, ESearchDir::FromStart, FirstIndex+13);
 		StringAux.RemoveAt(FirstIndex, SecondIndex + 13 - FirstIndex, true);
 	}
+
 
 	// Debug
 	GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, FString::Printf(TEXT("DB Readed: %s"), *StringAux));
