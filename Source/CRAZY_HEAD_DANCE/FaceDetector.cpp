@@ -314,6 +314,10 @@ void AFaceDetector::RemoveBackground()
         {
             for (int horizontalOffset = XInitialLoc; horizontalOffset < XInitialLoc + XSize; horizontalOffset++)
             {
+                // Check whether or not we are getting out of image
+                if (((verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 3) > resized.cols * resized.rows * resized.channels() ||
+                    verticalOffset < 0 || horizontalOffset < 0)
+                    continue;
                 recdata[i] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels)];
                 recdata[i + 1] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 1];
                 recdata[i + 2] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 2];
