@@ -150,6 +150,25 @@ void AFaceDetector::ConvertMatToOpenCV()
 void AFaceDetector::RemoveBackground()
 {
     FacesAsMat.Empty();
+    // Reorder rectangles based on it x position
+    bool TryAgain = CurrentRectangles.size() > 1;
+    int CurrentRecIdx = 0;
+    while (true)
+    {
+        if (CurrentRecIdx+1 >= CurrentRectangles.size())
+            break;
+
+        if (CurrentRectangles[CurrentRecIdx].x > CurrentRectangles[CurrentRecIdx + 1].x)
+        {
+            cv::Rect Aux = CurrentRectangles[CurrentRecIdx];
+            CurrentRectangles[CurrentRecIdx] = CurrentRectangles[CurrentRecIdx+1];
+            CurrentRectangles[CurrentRecIdx + 1] = Aux;
+            CurrentRecIdx = -1;
+        }
+
+        CurrentRecIdx++;
+    }
+
     // Remove background for each face
     for (cv::Rect CurrentRect : CurrentRectangles)
     {
