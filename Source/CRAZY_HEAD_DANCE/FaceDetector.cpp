@@ -26,7 +26,8 @@ void AFaceDetector::BeginPlay()
     if (Vcapture.isOpened())
     {
         // Change path before execution 
-        if (cascade.load("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/haarcascades/haarcascade_frontalcatface.xml"))
+        std::string CascadePath = std::string(TCHAR_TO_UTF8(*FPaths::ProjectDir())) + "ThirdParty/OpenCV/haarcascades/haarcascade_frontalcatface.xml";
+        if (cascade.load(CascadePath))
         {
             GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Yellow, TEXT("DB Faces loaded!"));
             UE_LOG(LogTemp, Warning, TEXT("DB Faces loaded!"));
@@ -55,15 +56,18 @@ void AFaceDetector::DetectAndDraw()
 AuxFaceDetector::AuxFaceDetector() : confidence_threshold_(0.5), input_image_height_(300), input_image_width_(300),
 scale_factor_(1.0), mean_values_({ 104., 177.0, 123.0 }) 
 {
-
-    network_ = cv::dnn::readNetFromCaffe("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/deploy.prototxt", "C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/res10_300x300_ssd_iter_140000_fp16.caffemodel");
+    std::string FirstPath = std::string(TCHAR_TO_UTF8(*FPaths::ProjectDir())) + "ThirdParty/OpenCV/Includes/opencvAssets/deploy.prototxt";
+    std::string SecondPath = std::string(TCHAR_TO_UTF8(*FPaths::ProjectDir())) + "ThirdParty/OpenCV/Includes/opencvAssets/res10_300x300_ssd_iter_140000_fp16.caffemodel";
+    network_ = cv::dnn::readNetFromCaffe(FirstPath, SecondPath);
 
     if (network_.empty()) 
     {
+        std::string ThirdPath = std::string(TCHAR_TO_UTF8(*FPaths::ProjectDir())) + "ThirdParty/OpenCV/Includes/opencvAssets/deploy.prototxt";
+        std::string FourthPath = std::string(TCHAR_TO_UTF8(*FPaths::ProjectDir())) + "ThirdParty/OpenCV/Includes/opencvAssets/res10_300x300_ssd_iter_140000_fp16.caffemodel";
         std::ostringstream ss;
         ss << "Failed to load network with the following settings:\n"
-            << "Configuration: " + std::string("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/deploy.prototxt") + "\n"
-            << "Binary: " + std::string("C:/Program Files/Epic Games/UnrealProjects/CreazyHead/ThirdParty/OpenCV/Includes/opencvAssets/res10_300x300_ssd_iter_140000_fp16.caffemodel") + "\n";
+            << "Configuration: " + ThirdPath + "\n"
+            << "Binary: " + FourthPath + "\n";
         throw std::invalid_argument(ss.str());
     }
 }

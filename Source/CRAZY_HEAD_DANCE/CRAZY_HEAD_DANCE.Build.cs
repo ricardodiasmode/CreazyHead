@@ -67,7 +67,7 @@ public class CRAZY_HEAD_DANCE : ModuleRules
 
             //Add Dynamic Libraries
             PublicDelayLoadDLLs.Add("opencv_world"+ OPENCV_VERSION + ".dll");
-            PublicDelayLoadDLLs.Add("opencv_ffmpeg" + OPENCV_VERSION + "_64.dll");
+            PublicDelayLoadDLLs.Add("opencv_videoio_ffmpeg" + OPENCV_VERSION + "_64.dll");
         }
 
         PublicDefinitions.Add(string.Format("WITH_OPENCV_BINDING={0}", isLibrarySupported ? 1 : 0));
