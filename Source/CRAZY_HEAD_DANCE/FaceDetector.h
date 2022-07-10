@@ -77,6 +77,8 @@ public:
         float RecSizeReduction = 0.6f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
         int FaceAdjustment = 10;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        bool IncreasePrecision = true;
 
 private:
 	void DetectAndDraw();

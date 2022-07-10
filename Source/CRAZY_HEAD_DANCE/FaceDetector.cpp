@@ -6,6 +6,8 @@
 #include "ImageUtils.h"
 #include "Kismet/KismetMathLibrary.h"
 #include <opencv2/imgproc/types_c.h>
+#include "MyGameInstance.h"
+#include "Kismet/GameplayStatics.h"
 
 // Sets default values
 AFaceDetector::AFaceDetector()
@@ -20,10 +22,7 @@ void AFaceDetector::BeginPlay()
 {
 	Super::BeginPlay();
 
-    // Start Video..1) 0 for WebCam 2) "Path to Video" for a Local Video
-    Vcapture.open(2);
-
-    if (Vcapture.isOpened())
+    if (Vcapture.open(Cast<UMyGameInstance>(UGameplayStatics::GetGameInstance(GetWorld()))->CameraIndex))
     {
         // Change path before execution 
         std::string CascadePath = std::string(TCHAR_TO_UTF8(*FPaths::ProjectDir())) + "ThirdParty/OpenCV/haarcascades/haarcascade_frontalcatface.xml";
@@ -103,7 +102,7 @@ std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& fra
 void AFaceDetector::ConvertMatToOpenCV()
 {
     cv::Mat source;
-    cv::resize(frame, source, cv::Size(frame.cols/2, frame.rows/2));
+    cv::resize(frame, source, cv::Size(frame.cols/3, frame.rows/3));
 
     CurrentRectangles = face_detector.detect_face_rectangles(source);
 
@@ -155,13 +154,8 @@ void AFaceDetector::RemoveBackground()
 {
     FacesAsMat.Empty();
     // Reorder rectangles based on it x position
-    bool TryAgain = CurrentRectangles.size() > 1;
-    int CurrentRecIdx = 0;
-    while (true)
+    for(int CurrentRecIdx = 0; CurrentRectangles.size() < CurrentRecIdx+1; CurrentRecIdx++)
     {
-        if (CurrentRecIdx+1 >= CurrentRectangles.size())
-            break;
-
         if (CurrentRectangles[CurrentRecIdx].x > CurrentRectangles[CurrentRecIdx + 1].x)
         {
             cv::Rect Aux = CurrentRectangles[CurrentRecIdx];
@@ -169,8 +163,6 @@ void AFaceDetector::RemoveBackground()
             CurrentRectangles[CurrentRecIdx + 1] = Aux;
             CurrentRecIdx = -1;
         }
-
-        CurrentRecIdx++;
     }
 
     // Remove background for each face
@@ -189,6 +181,9 @@ void AFaceDetector::RemoveBackground()
         int YSize = CurrentRect.height + FaceAdjustment * 2;
 
         TArray<FVector> PixelMeanArray;
+        float XMean = 0.0;
+        float YMean = 0.0;
+        float ZMean = 0.0;
         // This loop walk horizontally inside rectangle
         for (int CurrentHorizontalOffset = XInitialLoc+(XSize* RecSizeReduction); CurrentHorizontalOffset <= XInitialLoc+ XSize - (XSize * RecSizeReduction); CurrentHorizontalOffset++)
         {
@@ -199,25 +194,19 @@ void AFaceDetector::RemoveBackground()
                 cv::Vec4b bgrPixel = resized.at<cv::Vec4b>(CurrentHorizontalOffset, CurrentVerticalOffset);
 
                 // Adding pixel color to array
-                PixelMeanArray.Add(FVector(bgrPixel[0], bgrPixel[1], bgrPixel[2]));
+                XMean += bgrPixel[0];
+                YMean += bgrPixel[1];
+                ZMean += bgrPixel[2];
+                PixelMeanArray.Add(FVector(bgrPixel[0], bgrPixel[1], bgrPixel[2]);
             }
         }
 
-        // Actually getting the mean and standard deviation
-        float XMean = 0.0;
-        float YMean = 0.0;
-        float ZMean = 0.0;
-        for (FVector CurrentPix : PixelMeanArray)
-        {
-            XMean += CurrentPix.X;
-            YMean += CurrentPix.Y;
-            ZMean += CurrentPix.Z;
-        }
         // Actually getting the mean
         XMean = XMean / PixelMeanArray.Num(); // B
         YMean = YMean / PixelMeanArray.Num(); // G
         ZMean = ZMean / PixelMeanArray.Num(); // R
 
+        // Getting standart deviation
         float XSum = 0;
         float YSum = 0;
         float ZSum = 0;
@@ -227,31 +216,36 @@ void AFaceDetector::RemoveBackground()
             YSum += pow(CurrentPix.Y - YMean, 2);
             ZSum += pow(CurrentPix.Z - ZMean, 2);
         }
-        // Actually getting the sd
         float Xsd = sqrt(XSum / PixelMeanArray.Num());
         float Ysd = sqrt(YSum / PixelMeanArray.Num());
         float Zsd = sqrt(ZSum / PixelMeanArray.Num());
 
         // Now we wanna a new mean that does not consider points that are too far from sd
-        float AdjustedXMean = 0.0;
-        float AdjustedYMean = 0.0;
-        float AdjustedZMean = 0.0;
-        for (FVector CurrentPix : PixelMeanArray)
+        float AdjustedXMean = XMean;
+        float AdjustedYMean = YMean;
+        float AdjustedZMean = ZMean;
+        if (IncreasePrecision)
         {
-            if (abs(CurrentPix.X - XMean) > (Xsd/ MeanPrecisionMultiplier))
-                continue;
-            if (abs(CurrentPix.Y - YMean) > (Ysd/ MeanPrecisionMultiplier))
-                continue;
-            if (abs(CurrentPix.Z - ZMean) > (Zsd/ MeanPrecisionMultiplier))
-                continue;
-            AdjustedXMean += CurrentPix.X;
-            AdjustedYMean += CurrentPix.Y;
-            AdjustedZMean += CurrentPix.Z;
+            AdjustedXMean = 0.0;
+            AdjustedYMean = 0.0;
+            AdjustedZMean = 0.0;
+            for (FVector CurrentPix : PixelMeanArray)
+            {
+                if (abs(CurrentPix.X - XMean) > (Xsd / MeanPrecisionMultiplier))
+                    continue;
+                if (abs(CurrentPix.Y - YMean) > (Ysd / MeanPrecisionMultiplier))
+                    continue;
+                if (abs(CurrentPix.Z - ZMean) > (Zsd / MeanPrecisionMultiplier))
+                    continue;
+                AdjustedXMean += CurrentPix.X;
+                AdjustedYMean += CurrentPix.Y;
+                AdjustedZMean += CurrentPix.Z;
+            }
+            // Actually getting the mean
+            AdjustedXMean = AdjustedXMean / PixelMeanArray.Num(); // B
+            AdjustedYMean = AdjustedYMean / PixelMeanArray.Num(); // G
+            AdjustedZMean = AdjustedZMean / PixelMeanArray.Num(); // R
         }
-        // Actually getting the mean
-        AdjustedXMean = AdjustedXMean / PixelMeanArray.Num(); // B
-        AdjustedYMean = AdjustedYMean / PixelMeanArray.Num(); // G
-        AdjustedZMean = AdjustedZMean / PixelMeanArray.Num(); // R
 
         // Now, every pixel that is in a 1.5x radius from rectangle and is close to the mean that we found,
         // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
