@@ -47,7 +47,7 @@ private:
 	// VideoCapture class for playing video for which faces to be detected
 	cv::VideoCapture Vcapture;
 	cv::Mat frame;
-    cv::Mat resized;
+    cv::Mat resizedWithAlpha;
     TArray<cv::Mat> FacesAsMat;
     std::vector<cv::Rect> CurrentRectangles;
 
@@ -79,11 +79,14 @@ public:
         int FaceAdjustment = 10;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
         bool IncreasePrecision = true;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        bool WithChromaKey = true;
 
 private:
 	void DetectAndDraw();
     void ConvertMatToOpenCV();
-    void RemoveBackground();
+    void RemoveBackgroundWithoutChromaKey();
+    void RemoveBackgroundWithChromaKey();
 
 protected:
 	// Called when the game starts or when spawned

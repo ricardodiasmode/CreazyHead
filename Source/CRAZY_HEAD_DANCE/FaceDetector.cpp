@@ -101,19 +101,23 @@ std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& fra
 
 void AFaceDetector::ConvertMatToOpenCV()
 {
-    cv::Mat source;
-    cv::resize(frame, source, cv::Size(frame.cols/3, frame.rows/3));
+    cv::Mat resized;
+    cv::resize(frame, resized, cv::Size(frame.cols/3, frame.rows/3));
 
-    CurrentRectangles = face_detector.detect_face_rectangles(source);
+    CurrentRectangles.clear();
+    CurrentRectangles = face_detector.detect_face_rectangles(resized);
 
     // Convert to a 4 channels img
-    cv::cvtColor(source, resized, CV_BGR2BGRA);
+    cv::cvtColor(resized, resizedWithAlpha, CV_BGR2BGRA);
 
-    if (resized.empty())
+    if (resizedWithAlpha.empty())
         return;
 
     // We wanna only faces on the img
-    RemoveBackground();
+    if (WithChromaKey)
+        RemoveBackgroundWithChromaKey();
+    else
+        RemoveBackgroundWithoutChromaKey();
 
     if (FacesAsMat.Num() == 0)
         return;
@@ -124,7 +128,7 @@ void AFaceDetector::ConvertMatToOpenCV()
         if (FacesAsMat[i].empty())
             continue;
 
-        cv::imshow("img", FacesAsMat[i]);
+        //cv::imshow("img", FacesAsMat[i]);
 
         const int32 SrcWidth = FacesAsMat[i].cols;
         const int32 SrcHeight = FacesAsMat[i].rows;
@@ -150,11 +154,122 @@ void AFaceDetector::ConvertMatToOpenCV()
     }
 }
 
-void AFaceDetector::RemoveBackground()
+void AFaceDetector::RemoveBackgroundWithChromaKey()
 {
     FacesAsMat.Empty();
     // Reorder rectangles based on it x position
-    for(int CurrentRecIdx = 0; CurrentRectangles.size() < CurrentRecIdx+1; CurrentRecIdx++)
+    for (int CurrentRecIdx = 0; CurrentRectangles.size() < CurrentRecIdx + 1 && CurrentRectangles.size() > 0; CurrentRecIdx++)
+    {
+        if (CurrentRectangles[CurrentRecIdx].x > CurrentRectangles[CurrentRecIdx + 1].x)
+        {
+            cv::Rect Aux = CurrentRectangles[CurrentRecIdx];
+            CurrentRectangles[CurrentRecIdx] = CurrentRectangles[CurrentRecIdx + 1];
+            CurrentRectangles[CurrentRecIdx + 1] = Aux;
+            CurrentRecIdx = -1;
+        }
+    }
+
+    // Remove background for each face
+    for (cv::Rect CurrentRect : CurrentRectangles)
+    {
+        // Check whether or not we can adjust detection without get out of image
+        int LocalFaceAdjustment = FaceAdjustment;
+        if (FaceAdjustment < 0 || FaceAdjustment * 2 + CurrentRect.width + CurrentRect.x  > resizedWithAlpha.cols ||
+            FaceAdjustment * 2 + CurrentRect.height + CurrentRect.y > resizedWithAlpha.rows)
+            FaceAdjustment = 0;
+
+        // We need to know where is the face on the image
+        int XInitialLoc = CurrentRect.x - FaceAdjustment;
+        int XSize = CurrentRect.width + FaceAdjustment * 2;
+        int YInitialLoc = CurrentRect.y - FaceAdjustment;
+        int YSize = CurrentRect.height + FaceAdjustment * 2;
+
+        // Now, every pixel that is in a 1.5x radius from rectangle and is close to the mean that we found,
+        // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
+
+        // First we get the center of the rec
+        int XCenter = XInitialLoc + (XSize / 2);
+        int YCenter = YInitialLoc + (YSize / 2);
+        FVector2D CenterLoc(XCenter, YCenter);
+        // Then the dist from center to rec diagonal
+        float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
+        for (int YPix = 0; YPix < resizedWithAlpha.rows; YPix++)
+        {
+            for (int XPix = 0; XPix < resizedWithAlpha.cols; XPix++)
+            {
+                FVector2D PixelLoc(XPix, YPix);
+
+                // Whether or not pixel is too far from center
+                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplier ||
+                    abs(XPix - XCenter) > XSize * XDistTolerance)
+                {
+                    // Set alpha to 0
+                    cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
+                    pixelRef[3] = 0;
+                }
+                else
+                {
+                    // Whether or not pixel is too close from center
+                    if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplier &&
+                        abs(XPix - XCenter) < XSize * XCloseTolerance)
+                    {
+                        // Set alpha to 1
+                        cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
+                        pixelRef[3] = 255;
+                    }
+                    else
+                    {
+                        // If is not far from center, then we check if is close to green color with a px tolerance
+                        cv::Vec4b pixel = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
+                        if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], 0, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], 255, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], 0, PixelTolerance))
+                        {
+                            // Set alpha to 0
+                            cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
+                            pixelRef[3] = 0;
+                        }
+                        else
+                        {
+                            // Set alpha to 1
+                            cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
+                            pixelRef[3] = 255;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Creating mat around faces
+        uchar* recdata = new uchar[XSize * YSize * 4];
+        uchar* resizeddata = resizedWithAlpha.data;
+        int i = 0;
+        int NumChannels = resizedWithAlpha.channels();
+        for (int verticalOffset = YInitialLoc; verticalOffset < YInitialLoc + YSize; verticalOffset++)
+        {
+            for (int horizontalOffset = XInitialLoc; horizontalOffset < XInitialLoc + XSize; horizontalOffset++)
+            {
+                // Check whether or not we are getting out of image
+                if (((verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 3) > resizedWithAlpha.cols * resizedWithAlpha.rows * resizedWithAlpha.channels() ||
+                    verticalOffset < 0 || horizontalOffset < 0)
+                    continue;
+                recdata[i] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels)];
+                recdata[i + 1] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 1];
+                recdata[i + 2] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 2];
+                recdata[i + 3] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 3];
+                i += 4;
+            }
+        }
+
+        FacesAsMat.Add(cv::Mat(cv::Size(XSize, YSize), CV_8UC4, recdata));
+    }
+}
+
+void AFaceDetector::RemoveBackgroundWithoutChromaKey()
+{
+    FacesAsMat.Empty();
+    // Reorder rectangles based on it x position
+    for(int CurrentRecIdx = 0; CurrentRectangles.size() < CurrentRecIdx+1 && CurrentRectangles.size() > 0; CurrentRecIdx++)
     {
         if (CurrentRectangles[CurrentRecIdx].x > CurrentRectangles[CurrentRecIdx + 1].x)
         {
@@ -170,8 +285,8 @@ void AFaceDetector::RemoveBackground()
     {
         // Check whether or not we can adjust detection without get out of image
         int LocalFaceAdjustment = FaceAdjustment;
-        if (FaceAdjustment < 0 || FaceAdjustment * 2 + CurrentRect.width + CurrentRect.x  > resized.cols ||
-            FaceAdjustment * 2 + CurrentRect.height + CurrentRect.y > resized.rows)
+        if (FaceAdjustment < 0 || FaceAdjustment * 2 + CurrentRect.width + CurrentRect.x  > resizedWithAlpha.cols ||
+            FaceAdjustment * 2 + CurrentRect.height + CurrentRect.y > resizedWithAlpha.rows)
             FaceAdjustment = 0;
 
         // We need to know where is the face on the image
@@ -188,16 +303,16 @@ void AFaceDetector::RemoveBackground()
         for (int CurrentHorizontalOffset = XInitialLoc+(XSize* RecSizeReduction); CurrentHorizontalOffset <= XInitialLoc+ XSize - (XSize * RecSizeReduction); CurrentHorizontalOffset++)
         {
             // This loop walk vertically inside the rectangle
-            for (int CurrentVerticalOffset = YInitialLoc + (YSize * RecSizeReduction); CurrentVerticalOffset <= YInitialLoc+YSize - (YSize * RecSizeReduction); CurrentVerticalOffset += resized.cols)
+            for (int CurrentVerticalOffset = YInitialLoc + (YSize * RecSizeReduction); CurrentVerticalOffset <= YInitialLoc+YSize - (YSize * RecSizeReduction); CurrentVerticalOffset += resizedWithAlpha.cols)
             {
                 // Current pixel collor
-                cv::Vec4b bgrPixel = resized.at<cv::Vec4b>(CurrentHorizontalOffset, CurrentVerticalOffset);
+                cv::Vec4b bgrPixel = resizedWithAlpha.at<cv::Vec4b>(CurrentHorizontalOffset, CurrentVerticalOffset);
 
                 // Adding pixel color to array
                 XMean += bgrPixel[0];
                 YMean += bgrPixel[1];
                 ZMean += bgrPixel[2];
-                PixelMeanArray.Add(FVector(bgrPixel[0], bgrPixel[1], bgrPixel[2]);
+                PixelMeanArray.Add(FVector(bgrPixel[0], bgrPixel[1], bgrPixel[2]));
             }
         }
 
@@ -256,9 +371,9 @@ void AFaceDetector::RemoveBackground()
         FVector2D CenterLoc(XCenter, YCenter);
         // Then the dist from center to rec diagonal
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
-        for (int YPix = 0; YPix < resized.rows; YPix++)
+        for (int YPix = 0; YPix < resizedWithAlpha.rows; YPix++)
         {
-            for (int XPix = 0; XPix < resized.cols ; XPix++)
+            for (int XPix = 0; XPix < resizedWithAlpha.cols ; XPix++)
             {
                 FVector2D PixelLoc(XPix, YPix);
 
@@ -267,7 +382,7 @@ void AFaceDetector::RemoveBackground()
                     abs(XPix - XCenter) > XSize * XDistTolerance)
                 {
                     // Set alpha to 0
-                    cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
+                    cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
                     pixelRef[3] = 0;
                 }
                 else
@@ -277,25 +392,25 @@ void AFaceDetector::RemoveBackground()
                         abs(XPix - XCenter) < XSize * XCloseTolerance)
                     {
                         // Set alpha to 1
-                        cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
+                        cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
                         pixelRef[3] = 255;
                     }
                     else
                     {
                         // If is not far from center, then we check if is close to mean with a px tolerance
-                        cv::Vec4b pixel = resized.at<cv::Vec4b>(YPix, XPix);
+                        cv::Vec4b pixel = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
                         if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], AdjustedXMean, PixelTolerance) &&
                             UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], AdjustedYMean, PixelTolerance) &&
                             UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], AdjustedZMean, PixelTolerance))
                         {
                             // Set alpha to 1
-                            cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
+                            cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
                             pixelRef[3] = 255;
                         }
                         else
                         {
                             // Set alpha to 0
-                            cv::Vec4b& pixelRef = resized.at<cv::Vec4b>(YPix, XPix);
+                            cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
                             pixelRef[3] = 0;
                         }
                     }
@@ -305,21 +420,21 @@ void AFaceDetector::RemoveBackground()
 
         // Creating mat around faces
         uchar* recdata = new uchar[XSize * YSize * 4];
-        uchar* resizeddata = resized.data;
+        uchar* resizeddata = resizedWithAlpha.data;
         int i = 0;
-        int NumChannels = resized.channels();
+        int NumChannels = resizedWithAlpha.channels();
         for (int verticalOffset = YInitialLoc; verticalOffset < YInitialLoc + YSize; verticalOffset++)
         {
             for (int horizontalOffset = XInitialLoc; horizontalOffset < XInitialLoc + XSize; horizontalOffset++)
             {
                 // Check whether or not we are getting out of image
-                if (((verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 3) > resized.cols * resized.rows * resized.channels() ||
+                if (((verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 3) > resizedWithAlpha.cols * resizedWithAlpha.rows * resizedWithAlpha.channels() ||
                     verticalOffset < 0 || horizontalOffset < 0)
                     continue;
-                recdata[i] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels)];
-                recdata[i + 1] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 1];
-                recdata[i + 2] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 2];
-                recdata[i + 3] = resizeddata[(verticalOffset * NumChannels * resized.cols) + (horizontalOffset * NumChannels) + 3];
+                recdata[i] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels)];
+                recdata[i + 1] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 1];
+                recdata[i + 2] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 2];
+                recdata[i + 3] = resizeddata[(verticalOffset * NumChannels * resizedWithAlpha.cols) + (horizontalOffset * NumChannels) + 3];
                 i += 4;
             }
         }
