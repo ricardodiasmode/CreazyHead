@@ -169,8 +169,6 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
         }
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("%f"), (float)CurrentRectangles.size());
-
     // Remove background for each face
     for (cv::Rect CurrentRect : CurrentRectangles)
     {
