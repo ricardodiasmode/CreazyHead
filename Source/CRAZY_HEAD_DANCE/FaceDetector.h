@@ -72,11 +72,26 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
         float XDistTolerance = 0.6f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
-        float MeanPrecisionMultiplier = 1.f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-        float RecSizeReduction = 0.6f;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
         int FaceAdjustment = 10;
+
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        int PixelToleranceNoCk = 150;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        float CloseToCenterMultiplierNoCk = 0.7f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        float XCloseToleranceNoCk = 0.45f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        float DistToCenterMultiplierNoCk = 0.75f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        float XDistToleranceNoCk = 0.8f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        float MeanPrecisionMultiplierNoCk = 1.f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        float RecSizeReductionNoCk = 0.2f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        int FaceAdjustmentNoCk = 10;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
         bool IncreasePrecision = true;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)

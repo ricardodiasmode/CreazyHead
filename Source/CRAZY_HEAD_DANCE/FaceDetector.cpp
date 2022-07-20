@@ -285,8 +285,8 @@ void AFaceDetector::RemoveBackgroundWithoutChromaKey()
     {
         // Check whether or not we can adjust detection without get out of image
         int LocalFaceAdjustment = 10;
-        if (10 < 0 || 10 * 2 + CurrentRect.width + CurrentRect.x  > resizedWithAlpha.cols ||
-            10 * 2 + CurrentRect.height + CurrentRect.y > resizedWithAlpha.rows)
+        if (FaceAdjustmentNoCk < 0 || FaceAdjustmentNoCk * 2 + CurrentRect.width + CurrentRect.x  > resizedWithAlpha.cols ||
+            FaceAdjustmentNoCk * 2 + CurrentRect.height + CurrentRect.y > resizedWithAlpha.rows)
             FaceAdjustment = 0;
 
         // We need to know where is the face on the image
@@ -295,73 +295,6 @@ void AFaceDetector::RemoveBackgroundWithoutChromaKey()
         int YInitialLoc = CurrentRect.y - 10;
         int YSize = CurrentRect.height + 10 * 2;
 
-        TArray<FVector> PixelMeanArray;
-        float XMean = 0.0;
-        float YMean = 0.0;
-        float ZMean = 0.0;
-        // This loop walk horizontally inside rectangle
-        for (int CurrentHorizontalOffset = XInitialLoc+(XSize* 0.2); CurrentHorizontalOffset <= XInitialLoc+ XSize - (XSize * 0.2); CurrentHorizontalOffset++)
-        {
-            // This loop walk vertically inside the rectangle
-            for (int CurrentVerticalOffset = YInitialLoc + (YSize * 0.2); CurrentVerticalOffset <= YInitialLoc+YSize - (YSize * 0.2); CurrentVerticalOffset += resizedWithAlpha.cols)
-            {
-                // Current pixel collor
-                cv::Vec4b bgrPixel = resizedWithAlpha.at<cv::Vec4b>(CurrentHorizontalOffset, CurrentVerticalOffset);
-
-                // Adding pixel color to array
-                XMean += bgrPixel[0];
-                YMean += bgrPixel[1];
-                ZMean += bgrPixel[2];
-                PixelMeanArray.Add(FVector(bgrPixel[0], bgrPixel[1], bgrPixel[2]));
-            }
-        }
-
-        // Actually getting the mean
-        XMean = XMean / PixelMeanArray.Num(); // B
-        YMean = YMean / PixelMeanArray.Num(); // G
-        ZMean = ZMean / PixelMeanArray.Num(); // R
-
-        // Getting standart deviation
-        float XSum = 0;
-        float YSum = 0;
-        float ZSum = 0;
-        for (FVector CurrentPix : PixelMeanArray)
-        {
-            XSum += pow(CurrentPix.X - XMean, 2);
-            YSum += pow(CurrentPix.Y - YMean, 2);
-            ZSum += pow(CurrentPix.Z - ZMean, 2);
-        }
-        float Xsd = sqrt(XSum / PixelMeanArray.Num());
-        float Ysd = sqrt(YSum / PixelMeanArray.Num());
-        float Zsd = sqrt(ZSum / PixelMeanArray.Num());
-
-        // Now we wanna a new mean that does not consider points that are too far from sd
-        float AdjustedXMean = XMean;
-        float AdjustedYMean = YMean;
-        float AdjustedZMean = ZMean;
-        if (IncreasePrecision)
-        {
-            AdjustedXMean = 0.0;
-            AdjustedYMean = 0.0;
-            AdjustedZMean = 0.0;
-            for (FVector CurrentPix : PixelMeanArray)
-            {
-                if (abs(CurrentPix.X - XMean) > (Xsd / 1.0))
-                    continue;
-                if (abs(CurrentPix.Y - YMean) > (Ysd / 1.0))
-                    continue;
-                if (abs(CurrentPix.Z - ZMean) > (Zsd / 1.0))
-                    continue;
-                AdjustedXMean += CurrentPix.X;
-                AdjustedYMean += CurrentPix.Y;
-                AdjustedZMean += CurrentPix.Z;
-            }
-            // Actually getting the mean
-            AdjustedXMean = AdjustedXMean / PixelMeanArray.Num(); // B
-            AdjustedYMean = AdjustedYMean / PixelMeanArray.Num(); // G
-            AdjustedZMean = AdjustedZMean / PixelMeanArray.Num(); // R
-        }
-
         // Now, every pixel that is in a 1.5x radius from rectangle and is close to the mean that we found,
         // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
 
@@ -369,6 +302,11 @@ void AFaceDetector::RemoveBackgroundWithoutChromaKey()
         int XCenter = XInitialLoc + (XSize/2);
         int YCenter = YInitialLoc + (YSize/2);
         FVector2D CenterLoc(XCenter, YCenter);
+        cv::Vec4b leftpixel = resizedWithAlpha.at<cv::Vec4b>(XCenter-(XSize/3), YCenter + (YSize /3));
+        cv::Vec4b rightpixel = resizedWithAlpha.at<cv::Vec4b>(XCenter+(XSize / 3), YCenter + (YSize /3));
+        FVector PixelMean(((leftpixel[0]+rightpixel[0])/2),
+            ((leftpixel[1] + rightpixel[1]) / 2),
+            ((leftpixel[2] + rightpixel[2]) / 2));
         // Then the dist from center to rec diagonal
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
         for (int YPix = 0; YPix < resizedWithAlpha.rows; YPix++)
@@ -378,8 +316,8 @@ void AFaceDetector::RemoveBackgroundWithoutChromaKey()
                 FVector2D PixelLoc(XPix, YPix);
 
                 // Whether or not pixel is too far from center
-                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * 0.75 ||
-                    abs(XPix - XCenter) > XSize * 0.8)
+                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplierNoCk ||
+                    abs(XPix - XCenter) > XSize * XDistToleranceNoCk)
                 {
                     // Set alpha to 0
                     cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
@@ -388,8 +326,8 @@ void AFaceDetector::RemoveBackgroundWithoutChromaKey()
                 else
                 {
                     // Whether or not pixel is too close from center
-                    if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * 0.7 &&
-                        abs(XPix - XCenter) < XSize * 0.45)
+                    if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplierNoCk &&
+                        abs(XPix - XCenter) < XSize * XCloseToleranceNoCk)
                     {
                         // Set alpha to 1
                         cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
@@ -399,9 +337,9 @@ void AFaceDetector::RemoveBackgroundWithoutChromaKey()
                     {
                         // If is not far from center, then we check if is close to mean with a px tolerance
                         cv::Vec4b pixel = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
-                        if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], AdjustedXMean, 150) &&
-                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], AdjustedYMean, 150) &&
-                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], AdjustedZMean, 150))
+                        if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], PixelMean[0], PixelToleranceNoCk) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], PixelMean[1], PixelToleranceNoCk) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], PixelMean[2], PixelToleranceNoCk))
                         {
                             // Set alpha to 1
                             cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
