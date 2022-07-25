@@ -11,6 +11,21 @@
 #include "opencv2/opencv.hpp"
 #include "FaceDetector.generated.h"
 
+const int red_low_max = 255;
+const int red_high_max = 255;
+int red_low, red_high;
+double red_l, red_h;
+
+const int green_low_max = 255;
+const int green_high_max = 255;
+int green_low, green_high;
+double green_l, green_h;
+
+const int blue_low_max = 255;
+const int blue_high_max = 255;
+int blue_low, blue_high;
+double blue_l, blue_h;
+
 class UTexture2D;
 
 class AuxFaceDetector
@@ -102,6 +117,9 @@ private:
     void ConvertMatToOpenCV();
     void RemoveBackgroundWithoutChromaKey();
     void RemoveBackgroundWithChromaKey();
+
+    void chromakey(const cv::Mat in, cv::Mat* dst);
+    static void on_trackbar(int, void*);
 
 protected:
 	// Called when the game starts or when spawned

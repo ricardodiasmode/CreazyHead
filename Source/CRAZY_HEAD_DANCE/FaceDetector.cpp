@@ -8,6 +8,7 @@
 #include <opencv2/imgproc/types_c.h>
 #include "MyGameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "opencv2/highgui/highgui_c.h"
 
 // Sets default values
 AFaceDetector::AFaceDetector()
@@ -42,12 +43,46 @@ void AFaceDetector::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
+void AFaceDetector::on_trackbar(int, void*)
+{
+    red_l = cv::getTrackbarPos("Red Low", "Image Result1");
+    red_h = cv::getTrackbarPos("Red High", "Image Result1");
+
+    green_l = cv::getTrackbarPos("green Low", "Image Result1");
+    green_h = cv::getTrackbarPos("green High", "Image Result1");
+
+    blue_l = cv::getTrackbarPos("blue Low", "Image Result1");
+    blue_h = cv::getTrackbarPos("blue High", "Image Result1");
+
+}
+
 void AFaceDetector::DetectAndDraw()
 {
     // Capture frames from video and detect faces
     Vcapture >> frame;
     if (frame.empty())
         return;
+
+    /// Create Windows
+    cv::namedWindow("Image Result1", 1);
+
+    cv::createTrackbar("Red Low", "Image Result1", 0, 255, on_trackbar);
+    cv::createTrackbar("Red High", "Image Result1", 0, 255, on_trackbar);
+
+    cv::createTrackbar("green Low", "Image Result1", 0, 255, on_trackbar);
+    cv::createTrackbar("green High", "Image Result1", 0, 255, on_trackbar);
+
+    cv::createTrackbar("blue Low", "Image Result1", 0, 255, on_trackbar);
+    cv::createTrackbar("blue High", "Image Result1", 0, 255, on_trackbar);
+
+    cvSetTrackbarPos("Red Low", "Image Result1", 92);
+    cvSetTrackbarPos("Red High", "Image Result1", 242);
+
+    cvSetTrackbarPos("green Low", "Image Result1", 0);
+    cvSetTrackbarPos("green High", "Image Result1", 255);
+
+    cvSetTrackbarPos("blue Low", "Image Result1", 0);
+    cvSetTrackbarPos("blue High", "Image Result1", 121);
 
     ConvertMatToOpenCV();
 }
@@ -107,16 +142,18 @@ void AFaceDetector::ConvertMatToOpenCV()
     CurrentRectangles.clear();
     CurrentRectangles = face_detector.detect_face_rectangles(resized);
 
+    cv::Mat resizedWithoutBackground = resized;
+    if (WithChromaKey)
+        chromakey(resized, &resizedWithoutBackground);
+
     // Convert to a 4 channels img
-    cv::cvtColor(resized, resizedWithAlpha, CV_BGR2BGRA);
+    cv::cvtColor(resizedWithoutBackground, resizedWithAlpha, CV_BGR2BGRA);
 
     if (resizedWithAlpha.empty())
         return;
 
     // We wanna only faces on the img
-    if (WithChromaKey)
-        RemoveBackgroundWithChromaKey();
-    else
+    if (!WithChromaKey)
         RemoveBackgroundWithoutChromaKey();
 
     if (FacesAsMat.Num() == 0)
@@ -127,8 +164,6 @@ void AFaceDetector::ConvertMatToOpenCV()
     {
         if (FacesAsMat[i].empty())
             continue;
-
-        //cv::imshow("img", FacesAsMat[i]);
 
         const int32 SrcWidth = FacesAsMat[i].cols;
         const int32 SrcHeight = FacesAsMat[i].rows;
@@ -151,6 +186,34 @@ void AFaceDetector::ConvertMatToOpenCV()
         // Unlock the texture
         FrameAsTexture[i]->PlatformData->Mips[0].BulkData.Unlock();
         FrameAsTexture[i]->UpdateResource();
+    }
+}
+
+void AFaceDetector::chromakey(const cv::Mat in, cv::Mat* dst)
+{
+    // Create the destination matrix
+    *dst = cv::Mat(in.rows, in.cols, CV_8UC4);
+
+    for (int y = 0; y < in.rows; y++) {
+        for (int x = 0; x < in.cols; x++) {
+
+            dst->at<cv::Vec4b>(y, x)[0] = in.at<cv::Vec4b>(y, x)[0];
+            dst->at<cv::Vec4b>(y, x)[1] = in.at<cv::Vec4b>(y, x)[1];
+            dst->at<cv::Vec4b>(y, x)[2] = in.at<cv::Vec4b>(y, x)[2];
+            if (in.at<cv::Vec4b>(y, x)[0] >= red_l && 
+                in.at<cv::Vec4b>(y, x)[0] <= red_h && 
+                in.at<cv::Vec4b>(y, x)[1] >= green_l && 
+                in.at<cv::Vec4b>(y, x)[1] <= green_h &&
+                in.at<cv::Vec4b>(y, x)[2] >= blue_l &&
+                in.at<cv::Vec4b>(y, x)[2] <= blue_h)
+            {
+                dst->at<cv::Vec4b>(y, x)[3] = 0;
+            }
+            else {
+                dst->at<cv::Vec4b>(y, x)[3] = 255;
+            }
+
+        }
     }
 }
 
@@ -218,23 +281,14 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
                         pixelRef[3] = 255;
                     }
                     else
-                    {
-                        // If is not far from center, then we check if is close to green color with a px tolerance
-                        cv::Vec4b pixel = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
-                        if (UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[0], 0, PixelTolerance) &&
-                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[1], 255, PixelTolerance) &&
-                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixel[2], 0, PixelTolerance))
-                        {
-                            // Set alpha to 0
-                            cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
-                            pixelRef[3] = 0;
-                        }
-                        else
-                        {
-                            // Set alpha to 1
-                            cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
-                            pixelRef[3] = 255;
-                        }
+                    {// If is not far from center, then we set alpha
+                        cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
+                        double a1 = 1.5;
+                        double a2 = .5;
+                        double aux = a2 * atof(reinterpret_cast<char*>(pixelRef[0])); // Blue adjust
+                        double aux2 = atof(reinterpret_cast<char*>(pixelRef[1])); // Green
+                        double aux3 = aux2 - aux; // Vlahos formula
+                        pixelRef[3] = 255 - a1 * aux3;
                     }
                 }
             }
