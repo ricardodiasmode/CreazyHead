@@ -302,11 +302,12 @@ void AFaceDetector::RemoveBackgroundWithoutChromaKey()
         int XCenter = XInitialLoc + (XSize/2);
         int YCenter = YInitialLoc + (YSize/2);
         FVector2D CenterLoc(XCenter, YCenter);
-        cv::Vec4b leftpixel = resizedWithAlpha.at<cv::Vec4b>(XCenter-(XSize/3), YCenter + (YSize /3));
-        cv::Vec4b rightpixel = resizedWithAlpha.at<cv::Vec4b>(XCenter+(XSize / 3), YCenter + (YSize /3));
-        FVector PixelMean(((leftpixel[0]+rightpixel[0])/2),
-            ((leftpixel[1] + rightpixel[1]) / 2),
-            ((leftpixel[2] + rightpixel[2]) / 2));
+        cv::Vec4b leftpixel = resizedWithAlpha.at<cv::Vec4b>(XCenter-(XSize/2), YCenter + (YSize /4));
+        cv::Vec4b rightpixel = resizedWithAlpha.at<cv::Vec4b>(XCenter + (XSize / 2), YCenter + (YSize / 4));
+        cv::Vec4b abovepixel = resizedWithAlpha.at<cv::Vec4b>(XCenter, YCenter - (YSize / 2));
+        FVector PixelMean(((leftpixel[0]+rightpixel[0]+ abovepixel[0])/3),
+            ((leftpixel[1] + rightpixel[1] + abovepixel[1]) / 3),
+            ((leftpixel[2] + rightpixel[2] + abovepixel[2]) / 3));
         // Then the dist from center to rec diagonal
         float DiagDist = FVector2D::Distance(FVector2D(XInitialLoc, YInitialLoc), CenterLoc);
         for (int YPix = 0; YPix < resizedWithAlpha.rows; YPix++)
