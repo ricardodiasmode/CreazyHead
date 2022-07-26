@@ -10,6 +10,21 @@
 #include "Kismet/GameplayStatics.h"
 #include "opencv2/highgui/highgui_c.h"
 
+const int red_low_max = 255;
+const int red_high_max = 255;
+int red_low, red_high;
+double red_l, red_h;
+
+const int green_low_max = 255;
+const int green_high_max = 255;
+int green_low, green_high;
+double green_l, green_h;
+
+const int blue_low_max = 255;
+const int blue_high_max = 255;
+int blue_low, blue_high;
+double blue_l, blue_h;
+
 // Sets default values
 AFaceDetector::AFaceDetector()
 {
@@ -43,46 +58,12 @@ void AFaceDetector::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
-void AFaceDetector::on_trackbar(int, void*)
-{
-    red_l = cv::getTrackbarPos("Red Low", "Image Result1");
-    red_h = cv::getTrackbarPos("Red High", "Image Result1");
-
-    green_l = cv::getTrackbarPos("green Low", "Image Result1");
-    green_h = cv::getTrackbarPos("green High", "Image Result1");
-
-    blue_l = cv::getTrackbarPos("blue Low", "Image Result1");
-    blue_h = cv::getTrackbarPos("blue High", "Image Result1");
-
-}
-
 void AFaceDetector::DetectAndDraw()
 {
     // Capture frames from video and detect faces
     Vcapture >> frame;
     if (frame.empty())
         return;
-
-    /// Create Windows
-    cv::namedWindow("Image Result1", 1);
-
-    cv::createTrackbar("Red Low", "Image Result1", 0, 255, on_trackbar);
-    cv::createTrackbar("Red High", "Image Result1", 0, 255, on_trackbar);
-
-    cv::createTrackbar("green Low", "Image Result1", 0, 255, on_trackbar);
-    cv::createTrackbar("green High", "Image Result1", 0, 255, on_trackbar);
-
-    cv::createTrackbar("blue Low", "Image Result1", 0, 255, on_trackbar);
-    cv::createTrackbar("blue High", "Image Result1", 0, 255, on_trackbar);
-
-    cvSetTrackbarPos("Red Low", "Image Result1", 92);
-    cvSetTrackbarPos("Red High", "Image Result1", 242);
-
-    cvSetTrackbarPos("green Low", "Image Result1", 0);
-    cvSetTrackbarPos("green High", "Image Result1", 255);
-
-    cvSetTrackbarPos("blue Low", "Image Result1", 0);
-    cvSetTrackbarPos("blue High", "Image Result1", 121);
 
     ConvertMatToOpenCV();
 }
@@ -142,12 +123,20 @@ void AFaceDetector::ConvertMatToOpenCV()
     CurrentRectangles.clear();
     CurrentRectangles = face_detector.detect_face_rectangles(resized);
 
-    cv::Mat resizedWithoutBackground = resized;
+    cv::Mat resizedBlurried;
     if (WithChromaKey)
-        chromakey(resized, &resizedWithoutBackground);
+    {
+        cv::Mat ImgAlpha;
+        cv::cvtColor(resized, ImgAlpha, CV_BGR2Lab);
+        if (ImgAlpha.empty())
+            return;
+        cv::threshold(ImgAlpha, resizedThreshold, 127, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
+        cv::bitwise_and(resized, resized, Masked, resizedThreshold);
+        //cv::GaussianBlur(resized, resizedBlurried, cv::Size(0,0), 5, 5, cv::BORDER_DEFAULT);
+    }
 
     // Convert to a 4 channels img
-    cv::cvtColor(resizedWithoutBackground, resizedWithAlpha, CV_BGR2BGRA);
+    cv::cvtColor(resized, resizedWithAlpha, CV_BGR2BGRA);
 
     if (resizedWithAlpha.empty())
         return;
@@ -155,6 +144,8 @@ void AFaceDetector::ConvertMatToOpenCV()
     // We wanna only faces on the img
     if (!WithChromaKey)
         RemoveBackgroundWithoutChromaKey();
+    else
+        RemoveBackgroundWithChromaKey();
 
     if (FacesAsMat.Num() == 0)
         return;
@@ -189,34 +180,6 @@ void AFaceDetector::ConvertMatToOpenCV()
     }
 }
 
-void AFaceDetector::chromakey(const cv::Mat in, cv::Mat* dst)
-{
-    // Create the destination matrix
-    *dst = cv::Mat(in.rows, in.cols, CV_8UC4);
-
-    for (int y = 0; y < in.rows; y++) {
-        for (int x = 0; x < in.cols; x++) {
-
-            dst->at<cv::Vec4b>(y, x)[0] = in.at<cv::Vec4b>(y, x)[0];
-            dst->at<cv::Vec4b>(y, x)[1] = in.at<cv::Vec4b>(y, x)[1];
-            dst->at<cv::Vec4b>(y, x)[2] = in.at<cv::Vec4b>(y, x)[2];
-            if (in.at<cv::Vec4b>(y, x)[0] >= red_l && 
-                in.at<cv::Vec4b>(y, x)[0] <= red_h && 
-                in.at<cv::Vec4b>(y, x)[1] >= green_l && 
-                in.at<cv::Vec4b>(y, x)[1] <= green_h &&
-                in.at<cv::Vec4b>(y, x)[2] >= blue_l &&
-                in.at<cv::Vec4b>(y, x)[2] <= blue_h)
-            {
-                dst->at<cv::Vec4b>(y, x)[3] = 0;
-            }
-            else {
-                dst->at<cv::Vec4b>(y, x)[3] = 255;
-            }
-
-        }
-    }
-}
-
 void AFaceDetector::RemoveBackgroundWithChromaKey()
 {
     FacesAsMat.Empty();
@@ -235,22 +198,12 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
     // Remove background for each face
     for (cv::Rect CurrentRect : CurrentRectangles)
     {
-        // Check whether or not we can adjust detection without get out of image
-        int LocalFaceAdjustment = FaceAdjustment;
-        if (FaceAdjustment < 0 || FaceAdjustment * 2 + CurrentRect.width + CurrentRect.x  > resizedWithAlpha.cols ||
-            FaceAdjustment * 2 + CurrentRect.height + CurrentRect.y > resizedWithAlpha.rows)
-            FaceAdjustment = 0;
-
-        // We need to know where is the face on the image
-        int XInitialLoc = CurrentRect.x - FaceAdjustment;
-        int XSize = CurrentRect.width + FaceAdjustment * 2;
-        int YInitialLoc = CurrentRect.y - FaceAdjustment;
-        int YSize = CurrentRect.height + FaceAdjustment * 2;
-
-        // Now, every pixel that is in a 1.5x radius from rectangle and is close to the mean that we found,
-        // we keep. Every pixel that is out of the 1.5x radius or is not close to the mean we set as alpha 0;
-
         // First we get the center of the rec
+        // We need to know where is the face on the image
+        int XInitialLoc = CurrentRect.x - 10;
+        int XSize = CurrentRect.width + 10 * 2;
+        int YInitialLoc = CurrentRect.y - 10;
+        int YSize = CurrentRect.height + 10 * 2;
         int XCenter = XInitialLoc + (XSize / 2);
         int YCenter = YInitialLoc + (YSize / 2);
         FVector2D CenterLoc(XCenter, YCenter);
@@ -272,23 +225,23 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
                 }
                 else
                 {
+                    cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
                     // Whether or not pixel is too close from center
                     if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplier &&
                         abs(XPix - XCenter) < XSize * XCloseTolerance)
                     {
                         // Set alpha to 1
-                        cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
                         pixelRef[3] = 255;
                     }
                     else
                     {// If is not far from center, then we set alpha
-                        cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
-                        double a1 = 1.5;
-                        double a2 = .5;
-                        double aux = a2 * atof(reinterpret_cast<char*>(pixelRef[0])); // Blue adjust
-                        double aux2 = atof(reinterpret_cast<char*>(pixelRef[1])); // Green
-                        double aux3 = aux2 - aux; // Vlahos formula
-                        pixelRef[3] = 255 - a1 * aux3;
+
+                        cv::Vec4b& pixelThresholdRef = Masked.at<cv::Vec4b>(YPix, XPix);
+                        if(pixelThresholdRef[0] > 200)
+                            pixelRef[3] = 255;
+                        else
+                            pixelRef[3] = 0;
+
                     }
                 }
             }
