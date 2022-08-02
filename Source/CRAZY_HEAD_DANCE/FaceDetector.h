@@ -48,8 +48,6 @@ private:
 	cv::VideoCapture Vcapture;
 	cv::Mat frame;
     cv::Mat resizedWithAlpha;
-    cv::Mat resizedThreshold;
-    cv::Mat Masked;
     TArray<cv::Mat> FacesAsMat;
     std::vector<cv::Rect> CurrentRectangles;
 

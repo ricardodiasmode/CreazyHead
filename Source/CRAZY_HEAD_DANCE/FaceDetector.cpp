@@ -123,17 +123,12 @@ void AFaceDetector::ConvertMatToOpenCV()
     CurrentRectangles.clear();
     CurrentRectangles = face_detector.detect_face_rectangles(resized);
 
-    cv::Mat resizedBlurried;
-    if (WithChromaKey)
-    {
-        cv::Mat ImgAlpha;
-        cv::cvtColor(resized, ImgAlpha, CV_BGR2Lab);
-        if (ImgAlpha.empty())
-            return;
-        cv::threshold(ImgAlpha, resizedThreshold, 127, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
-        cv::bitwise_and(resized, resized, Masked, resizedThreshold);
-        //cv::GaussianBlur(resized, resizedBlurried, cv::Size(0,0), 5, 5, cv::BORDER_DEFAULT);
-    }
+    // Make all kinda-green color full black
+    cv::Mat hsv, mask;
+    cv::cvtColor(resized, hsv, cv::COLOR_BGR2HSV);
+    cv::inRange(hsv, cv::Scalar(80, 80, 20), cv::Scalar(150, 255, 255), mask);
+
+    resized.setTo(cv::Scalar(0, 0, 0), mask);
 
     // Convert to a 4 channels img
     cv::cvtColor(resized, resizedWithAlpha, CV_BGR2BGRA);
@@ -200,10 +195,10 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
     {
         // First we get the center of the rec
         // We need to know where is the face on the image
-        int XInitialLoc = CurrentRect.x - 10;
-        int XSize = CurrentRect.width + 10 * 2;
-        int YInitialLoc = CurrentRect.y - 10;
-        int YSize = CurrentRect.height + 10 * 2;
+        int XInitialLoc = CurrentRect.x - FaceAdjustment;
+        int XSize = CurrentRect.width + FaceAdjustment * 2;
+        int YInitialLoc = CurrentRect.y - FaceAdjustment;
+        int YSize = CurrentRect.height + FaceAdjustment * 2;
         int XCenter = XInitialLoc + (XSize / 2);
         int YCenter = YInitialLoc + (YSize / 2);
         FVector2D CenterLoc(XCenter, YCenter);
@@ -236,11 +231,13 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
                     else
                     {// If is not far from center, then we set alpha
 
-                        cv::Vec4b& pixelThresholdRef = Masked.at<cv::Vec4b>(YPix, XPix);
-                        if(pixelThresholdRef[0] > 200)
-                            pixelRef[3] = 255;
-                        else
+                        cv::Vec4b& pixelThresholdRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
+                        if(UKismetMathLibrary::NearlyEqual_FloatFloat(pixelThresholdRef[0], 0, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixelThresholdRef[1], 0, PixelTolerance) &&
+                            UKismetMathLibrary::NearlyEqual_FloatFloat(pixelThresholdRef[2], 0, PixelTolerance))
                             pixelRef[3] = 0;
+                        else
+                            pixelRef[3] = 255;
 
                     }
                 }
