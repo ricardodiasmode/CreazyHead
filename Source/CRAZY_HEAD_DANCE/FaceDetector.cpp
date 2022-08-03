@@ -126,7 +126,7 @@ void AFaceDetector::ConvertMatToOpenCV()
     // Make all kinda-green color full black
     cv::Mat hsv, mask;
     cv::cvtColor(resized, hsv, cv::COLOR_BGR2HSV);
-    cv::inRange(hsv, cv::Scalar(80, 80, 20), cv::Scalar(150, 255, 255), mask);
+    cv::inRange(hsv, cv::Scalar(40, 0, 0), cv::Scalar(80, 255, 255), mask);
 
     resized.setTo(cv::Scalar(0, 0, 0), mask);
 
@@ -209,24 +209,24 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
             for (int XPix = 0; XPix < resizedWithAlpha.cols; XPix++)
             {
                 FVector2D PixelLoc(XPix, YPix);
+                cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
 
-                // Whether or not pixel is too far from center
-                if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplier ||
-                    abs(XPix - XCenter) > XSize * XDistTolerance)
+                // Whether or not pixel is too close from center
+                if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplier &&
+                    abs(XPix - XCenter) < XSize * XCloseTolerance)
                 {
-                    // Set alpha to 0
-                    cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
-                    pixelRef[3] = 0;
+                    // Set alpha to 1
+                    pixelRef[3] = 255;
                 }
                 else
                 {
-                    cv::Vec4b& pixelRef = resizedWithAlpha.at<cv::Vec4b>(YPix, XPix);
-                    // Whether or not pixel is too close from center
-                    if (FVector2D::Distance(PixelLoc, CenterLoc) < DiagDist * CloseToCenterMultiplier &&
-                        abs(XPix - XCenter) < XSize * XCloseTolerance)
+                    // Whether or not pixel is too far from center
+                    if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplier ||
+                        abs(XPix - XCenter) > XSize * XDistTolerance ||
+                        abs(YPix - YCenter) > YSize * YDistTolerance)
                     {
-                        // Set alpha to 1
-                        pixelRef[3] = 255;
+                        // Set alpha to 0
+                        pixelRef[3] = 0;
                     }
                     else
                     {// If is not far from center, then we set alpha
