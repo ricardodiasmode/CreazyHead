@@ -74,6 +74,8 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
         float YDistTolerance = 0.6f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        float NeckDistTolerance = 0.3f;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
         int FaceAdjustment = 10;
 
 

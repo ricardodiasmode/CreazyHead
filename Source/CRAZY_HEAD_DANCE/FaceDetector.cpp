@@ -118,7 +118,7 @@ std::vector<cv::Rect> AuxFaceDetector::detect_face_rectangles(const cv::Mat& fra
 void AFaceDetector::ConvertMatToOpenCV()
 {
     cv::Mat resized;
-    cv::resize(frame, resized, cv::Size(frame.cols/3, frame.rows/3));
+    cv::resize(frame, resized, cv::Size(frame.cols, frame.rows));
 
     CurrentRectangles.clear();
     CurrentRectangles = face_detector.detect_face_rectangles(resized);
@@ -223,7 +223,8 @@ void AFaceDetector::RemoveBackgroundWithChromaKey()
                     // Whether or not pixel is too far from center
                     if (FVector2D::Distance(PixelLoc, CenterLoc) > DiagDist * DistToCenterMultiplier ||
                         abs(XPix - XCenter) > XSize * XDistTolerance ||
-                        abs(YPix - YCenter) > YSize * YDistTolerance)
+                        abs(YPix - YCenter) > YSize * YDistTolerance ||
+                        (YPix - YCenter) > YSize * NeckDistTolerance)
                     {
                         // Set alpha to 0
                         pixelRef[3] = 0;
